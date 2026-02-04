@@ -286,10 +286,12 @@
       background: var(--bg-secondary);
       border-left: 1px solid var(--border-color);
       height: 100%;
+      max-height: calc(100vh - 60px);
       overflow: hidden;
     }
 
     .chat-header {
+      flex-shrink: 0;
       padding: 12px 16px;
       border-bottom: 1px solid var(--border-color);
       display: flex;
@@ -306,23 +308,61 @@
 
     .voice-controls {
       display: flex;
-      gap: 4px;
+      gap: 6px;
+      align-items: center;
     }
 
     .voice-controls button {
-      padding: 4px 10px;
+      padding: 6px 10px;
       border-radius: 6px;
       border: 1px solid var(--border-color);
       background: transparent;
       color: var(--text-muted);
-      font-size: 0.75rem;
+      font-size: 0.9rem;
       cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .voice-controls button:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
     }
 
     .voice-controls button.active {
       background: var(--accent-blue);
       border-color: var(--accent-blue);
       color: white;
+    }
+
+    .voice-controls button.muted {
+      background: var(--accent-red);
+      border-color: var(--accent-red);
+      color: white;
+    }
+
+    .voice-controls .icon-btn {
+      padding: 6px 8px;
+      font-size: 1.1rem;
+    }
+
+    /* Selected square highlight for click-to-move */
+    .highlight-selected {
+      box-shadow: inset 0 0 0 4px var(--accent-blue) !important;
+    }
+
+    .highlight-legal {
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 25%, transparent 25%) !important;
+    }
+
+    .highlight-capture {
+      background: radial-gradient(circle, transparent 50%, rgba(239, 68, 68, 0.5) 50%) !important;
+    }
+
+    .highlight-last-move {
+      background-color: rgba(234, 179, 8, 0.4) !important;
     }
 
     .messages {
@@ -410,6 +450,7 @@
 
     /* Voice Input */
     .voice-input-area {
+      flex-shrink: 0;
       padding: 16px;
       border-top: 1px solid var(--border-color);
     }
@@ -467,6 +508,7 @@
     }
 
     .chat-input-area {
+      flex-shrink: 0;
       padding: 0 16px 16px;
       display: flex;
       gap: 8px;
@@ -504,9 +546,10 @@
 
     /* Move History */
     .move-history {
+      flex-shrink: 0;
       padding: 12px 16px;
       border-top: 1px solid var(--border-color);
-      max-height: 140px;
+      max-height: 120px;
       overflow-y: auto;
     }
 
@@ -530,6 +573,392 @@
     .move-num { color: var(--text-muted); width: 28px; }
     .move-white { color: var(--text-primary); width: 56px; }
     .move-black { color: var(--text-secondary); width: 56px; }
+
+    /* Difficulty Slider */
+    .difficulty-group {
+      margin-bottom: 24px;
+    }
+
+    .difficulty-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .difficulty-label {
+      font-weight: 500;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .difficulty-value {
+      font-weight: 600;
+      color: var(--accent-blue);
+      font-size: 0.875rem;
+    }
+
+    .difficulty-slider {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--bg-primary);
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .difficulty-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .difficulty-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+    }
+
+    .difficulty-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      border: none;
+    }
+
+    .difficulty-marks {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+
+    .stats-preview {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 0.8rem;
+    }
+
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .stats-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .stats-row .label {
+      color: var(--text-muted);
+    }
+
+    .stats-row .value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Game Over Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 420px;
+      width: 90%;
+      border: 1px solid var(--border-color);
+      transform: scale(0.9);
+      transition: transform 0.3s;
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1);
+    }
+
+    .modal h2 {
+      text-align: center;
+      margin-bottom: 8px;
+      font-size: 1.5rem;
+    }
+
+    .modal .result-message {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .modal .result-icon {
+      font-size: 4rem;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .modal .game-stats {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .modal .name-input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 1rem;
+      margin-bottom: 16px;
+    }
+
+    .modal .name-input:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
+    .modal .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .modal .btn {
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .modal .btn-primary {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .modal .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    .modal .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .modal .btn-secondary:hover {
+      background: #475569;
+    }
+
+    .modal .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+    }
+
+    .modal .btn-ghost:hover {
+      color: var(--text-primary);
+    }
+
+    /* Analysis Modal */
+    .analysis-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 700px) {
+      .analysis-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .analysis-board-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #analysis-board {
+      width: 100%;
+      max-width: 280px;
+    }
+
+    .replay-controls {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .replay-controls button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    .replay-controls button:hover {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+    }
+
+    .replay-controls button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .move-counter {
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .analysis-content {
+      max-height: 350px;
+      overflow-y: auto;
+    }
+
+    .move-analysis {
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-left: 4px solid transparent;
+    }
+
+    .move-analysis:hover {
+      transform: translateX(4px);
+    }
+
+    .move-analysis.selected {
+      box-shadow: 0 0 0 2px var(--accent-blue);
+    }
+
+    /* Positive classifications */
+    .move-analysis.brilliant {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(236, 72, 153, 0.3));
+      border-left-color: #a855f7;
+    }
+    .move-analysis.great {
+      background: rgba(59, 130, 246, 0.25);
+      border-left-color: #3b82f6;
+    }
+    .move-analysis.best {
+      background: rgba(34, 197, 94, 0.2);
+      border-left-color: #22c55e;
+    }
+    .move-analysis.good {
+      background: rgba(34, 197, 94, 0.1);
+      border-left-color: #4ade80;
+    }
+    .move-analysis.book {
+      background: rgba(148, 163, 184, 0.2);
+      border-left-color: #94a3b8;
+    }
+
+    /* Negative classifications */
+    .move-analysis.inaccuracy {
+      background: rgba(234, 179, 8, 0.2);
+      border-left-color: #eab308;
+    }
+    .move-analysis.mistake {
+      background: rgba(249, 115, 22, 0.25);
+      border-left-color: #f97316;
+    }
+    .move-analysis.blunder {
+      background: rgba(239, 68, 68, 0.25);
+      border-left-color: #ef4444;
+    }
+
+    .move-classification {
+      font-weight: 600;
+      text-transform: capitalize;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+    }
+
+    .move-classification.brilliant { background: #a855f7; color: white; }
+    .move-classification.great { background: #3b82f6; color: white; }
+    .move-classification.best { background: #22c55e; color: white; }
+    .move-classification.good { background: #4ade80; color: #1e293b; }
+    .move-classification.book { background: #94a3b8; color: #1e293b; }
+    .move-classification.inaccuracy { background: #eab308; color: #1e293b; }
+    .move-classification.mistake { background: #f97316; color: white; }
+    .move-classification.blunder { background: #ef4444; color: white; }
+
+    .move-eval {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .analysis-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      background: var(--bg-primary);
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-card .stat-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .stat-card .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .stat-card.brilliant .stat-value { color: #a855f7; }
+    .stat-card.great .stat-value { color: #3b82f6; }
+    .stat-card.best .stat-value { color: #22c55e; }
+    .stat-card.inaccuracy .stat-value { color: #eab308; }
+    .stat-card.mistake .stat-value { color: #f97316; }
+    .stat-card.blunder .stat-value { color: #ef4444; }
 
     /* Utilities */
     .hidden { display: none !important; }
@@ -583,7 +1012,51 @@
           </div>
         </div>
 
-        <button id="start-btn" class="start-btn" disabled>Start Game</button>
+        <div class="difficulty-group">
+          <div class="difficulty-header">
+            <span class="difficulty-label">Difficulty</span>
+            <span id="difficulty-value" class="difficulty-value">Intermediate (10)</span>
+          </div>
+          <input type="range" id="difficulty-slider" class="difficulty-slider" min="1" max="20" value="10">
+          <div class="difficulty-marks">
+            <span>Beginner</span>
+            <span>Easy</span>
+            <span>Medium</span>
+            <span>Hard</span>
+            <span>Master</span>
+          </div>
+        </div>
+
+        <div id="stats-preview" class="stats-preview">
+          <div class="stats-row">
+            <span class="label">Games Played</span>
+            <span id="stat-games" class="value">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="label">Win Rate</span>
+            <span id="stat-winrate" class="value">0%</span>
+          </div>
+          <div class="stats-row">
+            <span class="label">Record (W/L/D)</span>
+            <span id="stat-record" class="value">0/0/0</span>
+          </div>
+        </div>
+
+        <button id="start-btn" class="start-btn" disabled>Start New Game</button>
+        <button id="load-game-btn" class="start-btn" style="background: var(--bg-tertiary); margin-top: 8px;">Load Saved Game</button>
+      </div>
+    </div>
+
+    <!-- Load Game Modal -->
+    <div id="load-game-modal" class="modal-overlay">
+      <div class="modal" style="max-width: 500px;">
+        <h2>Load Saved Game</h2>
+        <div id="saved-games-list" style="max-height: 400px; overflow-y: auto; margin: 16px 0;">
+          <div style="text-align: center; padding: 20px; color: var(--text-muted);">Loading...</div>
+        </div>
+        <div class="button-group">
+          <button id="close-load-modal-btn" class="btn btn-secondary">Cancel</button>
+        </div>
       </div>
     </div>
 
@@ -610,8 +1083,10 @@
         <div class="chat-header">
           <h3>Chat</h3>
           <div class="voice-controls">
-            <button id="voice-toggle" class="active">Speaker</button>
-            <button id="stop-btn">Stop</button>
+            <button id="mic-toggle" class="icon-btn active" title="Microphone (click to mute)">MIC</button>
+            <button id="speaker-toggle" class="icon-btn active" title="Speaker (click to mute)">VOL</button>
+            <button id="skip-btn" class="icon-btn" title="Skip current speech">&gt;&gt;</button>
+            <button id="replay-move-btn" class="icon-btn" title="Replay last AI move">&#x21bb;</button>
           </div>
         </div>
 
@@ -636,6 +1111,93 @@
         </div>
       </div>
     </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="modal-overlay">
+      <div class="modal">
+        <div id="result-icon" class="result-icon"></div>
+        <h2 id="modal-title">Game Over</h2>
+        <p id="modal-message" class="result-message"></p>
+
+        <div class="game-stats">
+          <div class="stats-row">
+            <span class="label">Moves Played</span>
+            <span id="modal-moves" class="value">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="label">Your Color</span>
+            <span id="modal-color" class="value">White</span>
+          </div>
+          <div class="stats-row">
+            <span class="label">New Difficulty</span>
+            <span id="modal-difficulty" class="value">Intermediate</span>
+          </div>
+        </div>
+
+        <input type="text" id="game-name-input" class="name-input" placeholder="Name this game (optional)">
+
+        <div class="button-group">
+          <button id="save-review-btn" class="btn btn-primary">Save & Review Game</button>
+          <button id="save-new-btn" class="btn btn-secondary">Save & New Game</button>
+          <button id="skip-save-btn" class="btn btn-ghost">Skip & New Game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analysis Modal -->
+    <div id="analysis-modal" class="modal-overlay">
+      <div class="modal" style="max-width: 800px;">
+        <h2>Game Analysis</h2>
+        <div id="analysis-summary" class="result-message"></div>
+
+        <div class="analysis-stats-grid">
+          <div class="stat-card brilliant">
+            <div id="stat-brilliant" class="stat-value">0</div>
+            <div class="stat-label">Brilliant</div>
+          </div>
+          <div class="stat-card great">
+            <div id="stat-great" class="stat-value">0</div>
+            <div class="stat-label">Great</div>
+          </div>
+          <div class="stat-card best">
+            <div id="stat-best" class="stat-value">0</div>
+            <div class="stat-label">Best</div>
+          </div>
+          <div class="stat-card inaccuracy">
+            <div id="stat-inaccuracy" class="stat-value">0</div>
+            <div class="stat-label">Inaccuracies</div>
+          </div>
+          <div class="stat-card mistake">
+            <div id="stat-mistake" class="stat-value">0</div>
+            <div class="stat-label">Mistakes</div>
+          </div>
+          <div class="stat-card blunder">
+            <div id="stat-blunder" class="stat-value">0</div>
+            <div class="stat-label">Blunders</div>
+          </div>
+        </div>
+
+        <div class="analysis-layout">
+          <div class="analysis-board-container">
+            <div id="analysis-board"></div>
+            <div class="replay-controls">
+              <button id="replay-first" title="First move">⏮</button>
+              <button id="replay-prev" title="Previous move">◀</button>
+              <button id="replay-next" title="Next move">▶</button>
+              <button id="replay-last" title="Last move">⏭</button>
+            </div>
+            <div id="move-counter" class="move-counter">Starting position</div>
+          </div>
+
+          <div id="analysis-moves" class="analysis-content"></div>
+        </div>
+
+        <div class="button-group" style="margin-top: 20px;">
+          <button id="close-analysis-btn" class="btn btn-secondary">Close</button>
+          <button id="analysis-new-game-btn" class="btn btn-primary">New Game</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -657,26 +1219,87 @@
 
     // Voice
     let recognition = null;
-    let synth = window.speechSynthesis;
-    let selectedVoice = null;
+    let selectedVoice = 'ryan';  // Default neural voice
     let voiceEnabled = true;
     let isListening = false;
     let isSpeaking = false;
+    let currentAudio = null;
+
+    // Always-on microphone state
+    let alwaysOnMode = true;  // Default to always-on
+    let silenceTimer = null;
+    let accumulatedTranscript = '';
+    const SILENCE_TIMEOUT = 1500;  // 1.5 seconds of silence triggers submission
 
     // Current game state from server
     let gameState = null;
+
+    // Difficulty and stats
+    let currentDifficulty = 10;
+    let pendingGameOver = null;  // Stores game over data for modal
+
+    // Analysis replay state
+    let analysisBoard = null;
+    let analysisData = null;
+    let currentMoveIndex = -1;  // -1 = starting position
+
+    // Click-to-move state
+    let selectedSquare = null;
+    let legalMovesForSelected = [];
+
+    // Last AI move for replay
+    let lastAIMove = null;  // { from: 'e2', to: 'e4', piece: 'wP' }
 
     // ===========================================
     // Initialization
     // ===========================================
 
     document.addEventListener('DOMContentLoaded', async () => {
-      await loadModels();
-      loadVoices();
+      await Promise.all([
+        loadModels(),
+        loadVoices(),
+        loadDifficultyAndStats()
+      ]);
       setupEventListeners();
       setupSpeechRecognition();
       connectWebSocket();
     });
+
+    async function loadDifficultyAndStats() {
+      try {
+        // Load current difficulty
+        const diffResponse = await fetch(`${API_URL}/api/difficulty`);
+        const diffData = await diffResponse.json();
+        currentDifficulty = diffData.level;
+
+        const slider = document.getElementById('difficulty-slider');
+        slider.value = currentDifficulty;
+        updateDifficultyDisplay(currentDifficulty);
+
+        // Load stats
+        const statsResponse = await fetch(`${API_URL}/api/stats`);
+        const stats = await statsResponse.json();
+
+        document.getElementById('stat-games').textContent = stats.games_played;
+        document.getElementById('stat-winrate').textContent = `${stats.win_rate}%`;
+        document.getElementById('stat-record').textContent = `${stats.wins}/${stats.losses}/${stats.draws}`;
+
+      } catch (err) {
+        console.error('Failed to load difficulty/stats:', err);
+      }
+    }
+
+    function updateDifficultyDisplay(level) {
+      let name;
+      if (level <= 3) name = 'Beginner';
+      else if (level <= 6) name = 'Easy';
+      else if (level <= 10) name = 'Intermediate';
+      else if (level <= 14) name = 'Advanced';
+      else if (level <= 17) name = 'Expert';
+      else name = 'Master';
+
+      document.getElementById('difficulty-value').textContent = `${name} (${level})`;
+    }
 
     async function loadModels() {
       try {
@@ -715,74 +1338,187 @@
       }
     }
 
-    function loadVoices() {
-      const load = () => {
-        const voices = synth.getVoices();
+    async function loadVoices() {
+      try {
+        const response = await fetch(`${API_URL}/api/voices`);
+        const data = await response.json();
         const select = document.getElementById('voice-select');
         select.innerHTML = '';
 
-        const english = voices.filter(v => v.lang.startsWith('en'));
-        const toShow = english.length > 0 ? english : voices;
-
-        toShow.forEach((voice, i) => {
-          const option = document.createElement('option');
-          option.value = i;
-          option.textContent = `${voice.name} (${voice.lang})`;
-          select.appendChild(option);
-        });
-
-        // Prefer natural voices
-        const preferred = toShow.findIndex(v =>
-          v.name.includes('Samantha') ||
-          v.name.includes('Daniel') ||
-          v.name.includes('Karen') ||
-          v.name.includes('Google UK')
-        );
-
-        if (preferred >= 0) {
-          select.selectedIndex = preferred;
-          selectedVoice = toShow[preferred];
-        } else {
-          selectedVoice = toShow[0];
+        if (data.voices && data.voices.length > 0) {
+          data.voices.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice.key;
+            option.textContent = `${voice.name} - ${voice.description}`;
+            select.appendChild(option);
+          });
+          selectedVoice = data.voices[0].key;
         }
-      };
-
-      load();
-      synth.onvoiceschanged = load;
+      } catch (err) {
+        console.error('Failed to load voices:', err);
+        // Fallback
+        const select = document.getElementById('voice-select');
+        select.innerHTML = '<option value="ryan">Ryan (British Male)</option>';
+        selectedVoice = 'ryan';
+      }
     }
 
     function setupSpeechRecognition() {
       if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SR();
-        recognition.continuous = false;
+        recognition.continuous = true;  // Keep listening
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
-          const transcript = Array.from(event.results)
-            .map(r => r[0].transcript)
-            .join('');
+          // Clear any pending silence timer
+          if (silenceTimer) {
+            clearTimeout(silenceTimer);
+            silenceTimer = null;
+          }
 
-          document.getElementById('transcript').textContent = transcript;
+          // Get the latest transcript
+          let finalTranscript = '';
+          let interimTranscript = '';
 
-          if (event.results[event.results.length - 1].isFinal) {
-            sendChat(transcript);
-            setTimeout(() => {
-              document.getElementById('transcript').textContent = '';
-            }, 1000);
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result.isFinal) {
+              finalTranscript += result[0].transcript;
+            } else {
+              interimTranscript += result[0].transcript;
+            }
+          }
+
+          // Update display with both final and interim
+          const displayText = (accumulatedTranscript + finalTranscript + interimTranscript).trim();
+          document.getElementById('transcript').textContent = displayText;
+
+          // Accumulate final transcripts
+          if (finalTranscript) {
+            accumulatedTranscript += finalTranscript;
+          }
+
+          // Start silence timer - if no more speech for SILENCE_TIMEOUT, submit
+          if (accumulatedTranscript.trim() || interimTranscript.trim()) {
+            silenceTimer = setTimeout(() => {
+              const toSend = accumulatedTranscript.trim();
+              if (toSend) {
+                console.log('Silence detected, submitting:', toSend);
+                accumulatedTranscript = '';
+                document.getElementById('transcript').textContent = '';
+
+                // Pause listening while processing
+                pauseListening();
+                sendChat(toSend);
+              }
+            }, SILENCE_TIMEOUT);
           }
         };
 
         recognition.onerror = (event) => {
           console.error('Speech error:', event.error);
-          stopListening();
+          // Don't stop on no-speech error in always-on mode
+          if (event.error === 'no-speech') {
+            // Just restart if in always-on mode
+            if (alwaysOnMode && !isSpeaking && !isThinking) {
+              restartListening();
+            }
+            return;
+          }
           if (event.error === 'not-allowed') {
             addMessage('system', 'Microphone access denied. Please allow and reload.');
+            alwaysOnMode = false;
+            updateMicButton();
           }
+          if (event.error === 'aborted') {
+            // User or system aborted - this is fine
+            return;
+          }
+          stopListening();
         };
 
-        recognition.onend = () => stopListening();
+        recognition.onend = () => {
+          // Auto-restart if in always-on mode and not speaking/thinking
+          if (alwaysOnMode && !isSpeaking && !isThinking) {
+            setTimeout(() => {
+              if (alwaysOnMode && !isSpeaking && !isThinking) {
+                restartListening();
+              }
+            }, 100);
+          } else {
+            isListening = false;
+            updateMicButton();
+          }
+        };
+      }
+    }
+
+    function restartListening() {
+      if (!recognition || isSpeaking || isThinking) return;
+
+      try {
+        recognition.start();
+        isListening = true;
+        updateMicButton();
+      } catch (e) {
+        // Already started or other error
+        console.log('Recognition restart error:', e.message);
+      }
+    }
+
+    function pauseListening() {
+      // Temporarily pause without disabling always-on mode
+      if (recognition && isListening) {
+        try {
+          recognition.stop();
+        } catch (e) {}
+        isListening = false;
+      }
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+      accumulatedTranscript = '';
+    }
+
+    function updateMicButton() {
+      const btn = document.getElementById('mic-btn');
+      const icon = document.getElementById('mic-icon');
+      const text = document.getElementById('mic-text');
+
+      // Update main mic button in voice input area
+      if (isSpeaking) {
+        btn.className = 'mic-button speaking';
+        icon.innerHTML = '))';
+        text.textContent = 'Speaking...';
+      } else if (isListening) {
+        btn.className = 'mic-button listening';
+        icon.innerHTML = '((o))';
+        text.textContent = 'Listening...';
+      } else if (alwaysOnMode) {
+        btn.className = 'mic-button idle';
+        icon.innerHTML = '(o)';
+        text.textContent = 'Mic paused...';
+      } else {
+        btn.className = 'mic-button idle';
+        icon.innerHTML = '(x)';
+        text.textContent = 'Mic muted';
+      }
+
+      // Update header mic toggle button
+      const micToggle = document.getElementById('mic-toggle');
+      if (micToggle) {
+        if (alwaysOnMode) {
+          micToggle.classList.add('active');
+          micToggle.classList.remove('muted');
+          micToggle.title = 'Microphone (click to mute)';
+        } else {
+          micToggle.classList.remove('active');
+          micToggle.classList.add('muted');
+          micToggle.title = 'Microphone muted (click to unmute)';
+        }
       }
     }
 
@@ -843,8 +1579,10 @@
           updateStatus();
           if (data.thinking) {
             showThinking();
+            pauseListening();  // Pause while AI thinks
           } else {
             hideThinking();
+            // Note: Don't resume here - wait for ai_response to speak first
           }
           break;
 
@@ -855,7 +1593,19 @@
             updateBoard();
             updateGameInfo();
           }
+          // Track last AI move for replay
+          if (data.move && data.move_from && data.move_to) {
+            lastAIMove = {
+              from: data.move_from,
+              to: data.move_to,
+              san: data.move
+            };
+          }
           addMessage('assistant', data.message, data.move);
+          // Show blunder feedback if present
+          if (data.blunder_feedback) {
+            addMessage('system', data.blunder_feedback);
+          }
           speak(data.message);
           break;
 
@@ -867,6 +1617,18 @@
           }
           break;
 
+        case 'game_over':
+          // Update state and show game over modal
+          if (data.state) {
+            gameState = data.state;
+            updateBoard();
+            updateGameInfo();
+          }
+          // Pause listening and show modal
+          pauseListening();
+          showGameOverModal(data);
+          break;
+
         case 'error':
           addMessage('system', data.message);
           break;
@@ -875,7 +1637,10 @@
 
     function send(data) {
       if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('[WS SEND]', data);
         ws.send(JSON.stringify(data));
+      } else {
+        console.log('[WS SEND] WebSocket not open, cannot send:', data);
       }
     }
 
@@ -900,26 +1665,40 @@
 
       // Voice selection
       document.getElementById('voice-select').addEventListener('change', (e) => {
-        const voices = synth.getVoices();
-        const english = voices.filter(v => v.lang.startsWith('en'));
-        const toUse = english.length > 0 ? english : voices;
-        selectedVoice = toUse[e.target.selectedIndex];
+        selectedVoice = e.target.value;
       });
 
       // Start game
       document.getElementById('start-btn').addEventListener('click', startGame);
 
-      // Mic button
-      document.getElementById('mic-btn').addEventListener('click', toggleListening);
-
-      // Voice toggle
-      document.getElementById('voice-toggle').addEventListener('click', (e) => {
-        voiceEnabled = !voiceEnabled;
-        e.target.classList.toggle('active', voiceEnabled);
+      // Mic button (manual push-to-talk when mic is muted)
+      document.getElementById('mic-btn').addEventListener('click', () => {
+        if (!alwaysOnMode) {
+          // Mic is muted - toggle listening on
+          if (isListening) {
+            pauseListening();
+          } else {
+            startListening();
+          }
+        }
       });
 
-      // Stop speaking
-      document.getElementById('stop-btn').addEventListener('click', stopSpeaking);
+      // Mic toggle (mute/unmute microphone)
+      document.getElementById('mic-toggle').addEventListener('click', (e) => {
+        toggleMic();
+      });
+
+      // Speaker toggle (mute/unmute speaker)
+      document.getElementById('speaker-toggle').addEventListener('click', (e) => {
+        voiceEnabled = !voiceEnabled;
+        updateSpeakerButton();
+      });
+
+      // Skip current speech
+      document.getElementById('skip-btn').addEventListener('click', skipSpeaking);
+
+      // Replay last AI move
+      document.getElementById('replay-move-btn').addEventListener('click', replayLastAIMove);
 
       // Chat input
       document.getElementById('send-btn').addEventListener('click', () => {
@@ -956,24 +1735,104 @@
       // New game button
       document.getElementById('new-game-btn').addEventListener('click', () => {
         stopSpeaking();
-        document.getElementById('setup-screen').style.display = 'flex';
-        document.getElementById('game-screen').classList.remove('active');
-        document.getElementById('new-game-btn').classList.add('hidden');
+        showSetupScreen();
       });
+
+      // Difficulty slider
+      document.getElementById('difficulty-slider').addEventListener('input', (e) => {
+        updateDifficultyDisplay(parseInt(e.target.value));
+      });
+
+      document.getElementById('difficulty-slider').addEventListener('change', async (e) => {
+        const level = parseInt(e.target.value);
+        currentDifficulty = level;
+
+        try {
+          await fetch(`${API_URL}/api/difficulty`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level })
+          });
+        } catch (err) {
+          console.error('Failed to update difficulty:', err);
+        }
+      });
+
+      // Game over modal buttons
+      document.getElementById('save-review-btn').addEventListener('click', async () => {
+        await saveGameResult();
+        closeGameOverModal();
+        showAnalysisModal();
+      });
+
+      document.getElementById('save-new-btn').addEventListener('click', async () => {
+        await saveGameResult();
+        closeGameOverModal();
+        showSetupScreen();
+      });
+
+      document.getElementById('skip-save-btn').addEventListener('click', () => {
+        closeGameOverModal();
+        showSetupScreen();
+      });
+
+      // Analysis modal buttons
+      document.getElementById('close-analysis-btn').addEventListener('click', () => {
+        closeAnalysisModal();
+      });
+
+      document.getElementById('analysis-new-game-btn').addEventListener('click', () => {
+        closeAnalysisModal();
+        showSetupScreen();
+      });
+
+      // Replay controls
+      document.getElementById('replay-first').addEventListener('click', () => replayGoTo(-1));
+      document.getElementById('replay-prev').addEventListener('click', () => replayGoTo(currentMoveIndex - 1));
+      document.getElementById('replay-next').addEventListener('click', () => replayGoTo(currentMoveIndex + 1));
+      document.getElementById('replay-last').addEventListener('click', () => {
+        if (analysisData) replayGoTo(analysisData.moves.length - 1);
+      });
+
+      // Load game modal
+      document.getElementById('load-game-btn').addEventListener('click', openLoadGameModal);
+      document.getElementById('close-load-modal-btn').addEventListener('click', closeLoadGameModal);
+    }
+
+    function showSetupScreen() {
+      stopSpeaking();
+      document.getElementById('setup-screen').style.display = 'flex';
+      document.getElementById('game-screen').classList.remove('active');
+      document.getElementById('new-game-btn').classList.add('hidden');
+      loadDifficultyAndStats(); // Refresh stats
     }
 
     // ===========================================
     // Game Functions
     // ===========================================
 
-    function startGame() {
+    async function startGame() {
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').classList.add('active');
       document.getElementById('new-game-btn').classList.remove('hidden');
       document.getElementById('messages').innerHTML = '';
       document.getElementById('moves-list').innerHTML = '';
 
-      // Initialize board
+      // Apply the selected difficulty to the engine
+      const sliderValue = parseInt(document.getElementById('difficulty-slider').value);
+      currentDifficulty = sliderValue;
+
+      try {
+        await fetch(`${API_URL}/api/difficulty`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ level: currentDifficulty })
+        });
+      } catch (err) {
+        console.error('Failed to set difficulty:', err);
+      }
+
+      // Initialize board with click-to-move support
       const config = {
         draggable: true,
         position: 'start',
@@ -987,12 +1846,26 @@
       board = Chessboard('board', config);
       $(window).resize(() => board.resize());
 
+      // Add click-to-move handlers
+      setupClickToMove();
+
       // Start game on server
       send({
         type: 'new_game',
         player_color: playerColor,
         model: selectedModel
       });
+
+      // Initialize button states
+      updateMicButton();
+      updateSpeakerButton();
+
+      // Auto-start always-on listening after a short delay
+      setTimeout(() => {
+        if (alwaysOnMode) {
+          startListening();
+        }
+      }, 1000);
     }
 
     function onDragStart(source, piece) {
@@ -1008,19 +1881,41 @@
       if (playerColor === 'white' && !isWhitePiece) return false;
       if (playerColor === 'black' && isWhitePiece) return false;
 
+      // Clear any click-to-move selection when dragging starts
+      clearSelection();
+
       return true;
     }
 
     function onDrop(source, target) {
-      // Try to make move via chat (server will validate)
-      const move = source + target;
-      send({ type: 'chat', message: move });
-      return 'snapback'; // Let server update position
+      // Clear any click-to-move selection
+      clearSelection();
+
+      // If dropped on same square, treat as a selection click
+      if (source === target) {
+        // Let the click handler deal with selection
+        return 'snapback';
+      }
+
+      // Check if this move is in the legal moves list
+      const uciMove = source + target;
+      const isLegal = gameState && gameState.legal_moves &&
+                      gameState.legal_moves.some(m => m.startsWith(uciMove));
+
+      if (isLegal) {
+        // Send move to server - board will snap to new position
+        send({ type: 'move', move: uciMove });
+        return true; // Allow the drop - piece stays where dropped
+      }
+
+      return 'snapback'; // Illegal move - snap back
     }
 
     function onSnapEnd() {
+      // Board position is managed by server updates
+      // This ensures the visual matches the game state
       if (gameState) {
-        board.position(gameState.fen);
+        board.position(gameState.fen, false); // false = no animation
       }
     }
 
@@ -1100,7 +1995,8 @@
     function sendChat(message) {
       if (!message.trim() || isThinking) return;
 
-      stopListening();
+      // Pause listening while processing (don't disable always-on mode)
+      pauseListening();
       addMessage('user', message);
       send({ type: 'chat', message: message });
     }
@@ -1152,80 +2048,374 @@
     // ===========================================
 
     function toggleListening() {
-      if (isListening) {
-        stopListening();
-      } else {
+      // Toggle always-on mode
+      alwaysOnMode = !alwaysOnMode;
+
+      if (alwaysOnMode) {
+        // Enable always-on mode
         startListening();
+      } else {
+        // Disable always-on mode
+        stopListening();
       }
     }
 
     function startListening() {
-      if (!recognition || isThinking || isSpeaking) return;
+      if (!recognition || isThinking || isSpeaking) {
+        // Queue to start when ready
+        return;
+      }
 
       stopSpeaking();
-      recognition.start();
-      isListening = true;
 
-      const btn = document.getElementById('mic-btn');
-      btn.className = 'mic-button listening';
-      document.getElementById('mic-icon').innerHTML = '&#128308;';
-      document.getElementById('mic-text').textContent = 'Listening...';
+      try {
+        recognition.start();
+        isListening = true;
+        accumulatedTranscript = '';
+      } catch (e) {
+        console.log('Start listening error:', e.message);
+      }
+
+      updateMicButton();
     }
 
     function stopListening() {
+      alwaysOnMode = false;
+
       if (recognition) {
         try { recognition.stop(); } catch (e) {}
       }
       isListening = false;
 
-      const btn = document.getElementById('mic-btn');
-      btn.className = 'mic-button idle';
-      document.getElementById('mic-icon').innerHTML = '&#127908;';
-      document.getElementById('mic-text').textContent = 'Click to Speak';
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+      accumulatedTranscript = '';
+      document.getElementById('transcript').textContent = '';
+
+      updateMicButton();
     }
 
-    function speak(text) {
-      if (!voiceEnabled || !selectedVoice) return;
+    async function speak(text) {
+      console.log('speak() called with:', text, 'voiceEnabled:', voiceEnabled);
 
-      synth.cancel();
+      if (!voiceEnabled) {
+        console.log('Voice disabled, skipping TTS');
+        // Even if voice disabled, resume listening after a beat
+        setTimeout(resumeListeningIfAlwaysOn, 500);
+        return;
+      }
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.voice = selectedVoice;
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      if (!text || text.trim() === '') {
+        console.log('Empty text, skipping TTS');
+        setTimeout(resumeListeningIfAlwaysOn, 500);
+        return;
+      }
 
-      utterance.onstart = () => {
+      // Pause listening while speaking
+      pauseListening();
+
+      // Stop any current audio
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
+
+      try {
+        // Update UI
         isSpeaking = true;
-        const btn = document.getElementById('mic-btn');
-        btn.className = 'mic-button speaking';
-        document.getElementById('mic-icon').innerHTML = '&#128266;';
-        document.getElementById('mic-text').textContent = 'Speaking...';
-      };
+        updateMicButton();
 
-      utterance.onend = () => {
+        console.log('Fetching TTS for:', text.substring(0, 50) + '...');
+
+        // Fetch audio from neural TTS endpoint
+        const response = await fetch(`${API_URL}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: text,
+            voice: selectedVoice,
+            rate: '+0%'
+          })
+        });
+
+        console.log('TTS response status:', response.status);
+
+        if (!response.ok) {
+          throw new Error(`TTS request failed: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        console.log('Audio blob size:', audioBlob.size);
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+        currentAudio = new Audio(audioUrl);
+
+        currentAudio.onended = () => {
+          console.log('Audio playback ended');
+          isSpeaking = false;
+          URL.revokeObjectURL(audioUrl);
+          currentAudio = null;
+          updateMicButton();
+
+          // Resume listening after TTS completes
+          setTimeout(resumeListeningIfAlwaysOn, 300);
+        };
+
+        currentAudio.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          isSpeaking = false;
+          URL.revokeObjectURL(audioUrl);
+          currentAudio = null;
+          updateMicButton();
+
+          // Resume listening even on error
+          setTimeout(resumeListeningIfAlwaysOn, 300);
+        };
+
+        console.log('Playing audio...');
+        await currentAudio.play();
+        console.log('Audio play() started');
+
+      } catch (err) {
+        console.error('TTS error:', err);
         isSpeaking = false;
-        const btn = document.getElementById('mic-btn');
-        btn.className = 'mic-button idle';
-        document.getElementById('mic-icon').innerHTML = '&#127908;';
-        document.getElementById('mic-text').textContent = 'Click to Speak';
-      };
+        updateMicButton();
 
-      utterance.onerror = () => {
-        isSpeaking = false;
-      };
+        // Resume listening even on error
+        setTimeout(resumeListeningIfAlwaysOn, 300);
+      }
+    }
 
-      synth.speak(utterance);
+    function resumeListeningIfAlwaysOn() {
+      if (alwaysOnMode && !isSpeaking && !isThinking) {
+        startListening();
+      }
     }
 
     function stopSpeaking() {
-      synth.cancel();
-      isSpeaking = false;
-      if (!isListening) {
-        const btn = document.getElementById('mic-btn');
-        btn.className = 'mic-button idle';
-        document.getElementById('mic-icon').innerHTML = '&#127908;';
-        document.getElementById('mic-text').textContent = 'Click to Speak';
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        currentAudio = null;
       }
+      isSpeaking = false;
+      updateMicButton();
+
+      // Resume listening if in always-on mode
+      setTimeout(resumeListeningIfAlwaysOn, 100);
+    }
+
+    function skipSpeaking() {
+      // Skip the current speech but don't stop permanently
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        currentAudio = null;
+      }
+      isSpeaking = false;
+      updateMicButton();
+
+      // Resume listening immediately
+      setTimeout(resumeListeningIfAlwaysOn, 100);
+    }
+
+    function toggleMic() {
+      alwaysOnMode = !alwaysOnMode;
+      const btn = document.getElementById('mic-toggle');
+
+      if (alwaysOnMode) {
+        btn.classList.add('active');
+        btn.classList.remove('muted');
+        btn.innerHTML = 'MIC';
+        btn.title = 'Microphone (click to mute)';
+        startListening();
+      } else {
+        btn.classList.remove('active');
+        btn.classList.add('muted');
+        btn.innerHTML = 'MIC';
+        btn.title = 'Microphone muted (click to unmute)';
+        pauseListening();
+      }
+    }
+
+    function updateSpeakerButton() {
+      const btn = document.getElementById('speaker-toggle');
+      if (!btn) return;
+      if (voiceEnabled) {
+        btn.classList.add('active');
+        btn.classList.remove('muted');
+        btn.innerHTML = 'VOL';
+        btn.title = 'Speaker (click to mute)';
+      } else {
+        btn.classList.remove('active');
+        btn.classList.add('muted');
+        btn.innerHTML = 'MUTE';
+        btn.title = 'Speaker muted (click to unmute)';
+      }
+    }
+
+    // ===========================================
+    // Click-to-Move
+    // ===========================================
+
+    // These are declared at the top with other state variables
+    // selectedSquare and legalMovesForSelected
+
+    function setupClickToMove() {
+      const boardEl = document.getElementById('board');
+
+      // Simple approach: listen for clicks on the board container
+      // chessboard.js handles drag, we handle click-to-move separately
+      boardEl.addEventListener('click', function(e) {
+        // Find the square that was clicked
+        const squareEl = e.target.closest('[data-square]');
+        if (!squareEl) {
+          console.log('[CLICK] No square element found');
+          return;
+        }
+
+        const square = squareEl.getAttribute('data-square');
+        console.log('[CLICK EVENT] Square:', square);
+
+        // Use setTimeout to let any drag operation complete first
+        setTimeout(() => handleSquareClick(square), 0);
+      });
+    }
+
+    function handleSquareClick(square) {
+      console.log('[CLICK] handleSquareClick called with:', square);
+
+      if (!gameState) {
+        console.log('[CLICK] No gameState, returning');
+        return;
+      }
+      if (gameState.is_game_over) {
+        console.log('[CLICK] Game over, returning');
+        return;
+      }
+      if (isThinking) {
+        console.log('[CLICK] AI thinking, returning');
+        return;
+      }
+
+      const isPlayerTurn = gameState.turn === playerColor;
+      if (!isPlayerTurn) {
+        console.log('[CLICK] Not player turn, returning');
+        return;
+      }
+
+      const position = board.position();
+      const piece = position[square];
+
+      console.log('[CLICK] Processing:', square, 'selected:', selectedSquare, 'piece:', piece, 'legalTargets:', legalMovesForSelected);
+
+      // If we have a selected piece and clicked a different square
+      if (selectedSquare && square !== selectedSquare) {
+        console.log('[CLICK] Have selection, checking if', square, 'is legal target');
+        console.log('[CLICK] Legal targets:', legalMovesForSelected);
+
+        // Check if this is a legal move
+        if (legalMovesForSelected.includes(square)) {
+          // Make the move
+          const uciMove = selectedSquare + square;
+          console.log('[CLICK] SENDING MOVE:', uciMove);
+          clearSelection();
+          send({ type: 'move', move: uciMove });
+          return;
+        } else {
+          console.log('[CLICK]', square, 'is NOT in legal targets');
+        }
+
+        // Check if clicking on another own piece - switch selection
+        if (piece) {
+          const isOwnPiece = (playerColor === 'white' && piece[0] === 'w') ||
+                            (playerColor === 'black' && piece[0] === 'b');
+          if (isOwnPiece) {
+            selectSquare(square);
+            return;
+          }
+        }
+
+        // Clicked on invalid square - clear selection
+        clearSelection();
+        return;
+      }
+
+      // If clicked on own piece, select it
+      if (piece) {
+        const isOwnPiece = (playerColor === 'white' && piece[0] === 'w') ||
+                          (playerColor === 'black' && piece[0] === 'b');
+        if (isOwnPiece) {
+          selectSquare(square);
+          return;
+        }
+      }
+
+      // Clicked elsewhere - clear selection
+      clearSelection();
+    }
+
+    function selectSquare(square) {
+      console.log('[SELECT] Selecting square:', square);
+      clearSelection();
+      selectedSquare = square;
+
+      // Highlight selected square
+      $('[data-square="' + square + '"]').addClass('highlight-selected');
+
+      // Get legal moves for this piece from the game state
+      if (gameState && gameState.legal_moves) {
+        const matchingMoves = gameState.legal_moves.filter(m => m.startsWith(square));
+        console.log('[SELECT] Matching UCI moves:', matchingMoves);
+
+        legalMovesForSelected = matchingMoves.map(m => m.substring(2, 4));
+        console.log('[SELECT] Legal target squares:', legalMovesForSelected);
+
+        // Highlight legal moves
+        legalMovesForSelected.forEach(target => {
+          const targetEl = $('[data-square="' + target + '"]');
+          const position = board.position();
+          const hasPiece = position[target];
+          if (hasPiece) {
+            targetEl.addClass('highlight-capture');
+          } else {
+            targetEl.addClass('highlight-legal');
+          }
+        });
+      }
+    }
+
+    function clearSelection() {
+      selectedSquare = null;
+      legalMovesForSelected = [];
+      $('[data-square]').removeClass('highlight-selected highlight-legal highlight-capture highlight-last-move');
+    }
+
+    // ===========================================
+    // Replay Last AI Move
+    // ===========================================
+
+    function replayLastAIMove() {
+      if (!lastAIMove || !board) return;
+
+      // Clear previous highlights
+      clearSelection();
+
+      // Highlight the move squares
+      $('.square-' + lastAIMove.from).addClass('highlight-last-move');
+      $('.square-' + lastAIMove.to).addClass('highlight-last-move');
+
+      // Optionally animate by briefly showing the piece moving
+      // Flash effect
+      setTimeout(() => {
+        $('.square-' + lastAIMove.from).removeClass('highlight-last-move');
+      }, 2000);
+
+      setTimeout(() => {
+        $('.square-' + lastAIMove.to).removeClass('highlight-last-move');
+      }, 3000);
     }
 
     // ===========================================
@@ -1235,6 +2425,427 @@
     function showError(msg) {
       const container = document.getElementById('error-container');
       container.innerHTML = `<div class="error-msg">${msg}</div>`;
+    }
+
+    // ===========================================
+    // Game Over Modal
+    // ===========================================
+
+    function showGameOverModal(data) {
+      pendingGameOver = data;
+
+      // Set icon based on result
+      const iconEl = document.getElementById('result-icon');
+      if (data.result === 'win') {
+        iconEl.textContent = 'VICTORY';
+        iconEl.style.color = 'var(--accent-green)';
+      } else if (data.result === 'loss') {
+        iconEl.textContent = 'DEFEAT';
+        iconEl.style.color = 'var(--accent-red)';
+      } else {
+        iconEl.textContent = 'DRAW';
+        iconEl.style.color = 'var(--accent-yellow)';
+      }
+
+      // Set title and message
+      const titleEl = document.getElementById('modal-title');
+      if (data.result === 'win') {
+        titleEl.textContent = 'Victory!';
+      } else if (data.result === 'loss') {
+        titleEl.textContent = 'Defeat';
+      } else {
+        titleEl.textContent = 'Draw';
+      }
+
+      document.getElementById('modal-message').textContent = data.message;
+      document.getElementById('modal-moves').textContent = Math.ceil(data.moves_count / 2);
+      document.getElementById('modal-color').textContent = data.player_color === 'white' ? 'White' : 'Black';
+      document.getElementById('modal-difficulty').textContent = `Level ${currentDifficulty}`;
+
+      // Clear name input
+      document.getElementById('game-name-input').value = '';
+
+      // Show modal
+      document.getElementById('game-over-modal').classList.add('active');
+    }
+
+    function closeGameOverModal() {
+      document.getElementById('game-over-modal').classList.remove('active');
+      pendingGameOver = null;
+    }
+
+    async function saveGameResult() {
+      if (!pendingGameOver) return;
+
+      const gameName = document.getElementById('game-name-input').value.trim();
+
+      try {
+        const response = await fetch(`${API_URL}/api/game/default/record`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            result: pendingGameOver.result,
+            name: gameName || null
+          })
+        });
+
+        const data = await response.json();
+
+        // Update difficulty display
+        currentDifficulty = data.new_difficulty;
+        document.getElementById('modal-difficulty').textContent = `${data.difficulty_name} (${data.new_difficulty})`;
+
+        // Refresh stats
+        document.getElementById('stat-games').textContent = data.stats.games_played;
+        document.getElementById('stat-winrate').textContent = `${data.stats.win_rate}%`;
+        document.getElementById('stat-record').textContent = `${data.stats.wins}/${data.stats.losses}/${data.stats.draws}`;
+
+      } catch (err) {
+        console.error('Failed to save game result:', err);
+      }
+    }
+
+    // ===========================================
+    // Analysis Modal with Replay
+    // ===========================================
+
+    async function showAnalysisModal() {
+      const modal = document.getElementById('analysis-modal');
+      modal.classList.add('active');
+
+      // Show loading state
+      document.getElementById('analysis-summary').textContent = 'Analyzing game...';
+      document.getElementById('analysis-moves').innerHTML = '<div style="text-align:center;padding:20px;">Please wait...</div>';
+
+      // Reset stats
+      ['brilliant', 'great', 'best', 'inaccuracy', 'mistake', 'blunder'].forEach(type => {
+        document.getElementById(`stat-${type}`).textContent = '0';
+      });
+
+      try {
+        const response = await fetch(`${API_URL}/api/game/default/analysis`);
+        const data = await response.json();
+
+        if (data.error) {
+          document.getElementById('analysis-summary').textContent = 'Analysis failed: ' + data.error;
+          return;
+        }
+
+        // Store for replay
+        analysisData = data;
+        currentMoveIndex = -1;
+
+        // Initialize analysis board
+        if (!analysisBoard) {
+          analysisBoard = Chessboard('analysis-board', {
+            position: data.starting_fen || 'start',
+            orientation: playerColor,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+          });
+        } else {
+          analysisBoard.position(data.starting_fen || 'start');
+          analysisBoard.orientation(playerColor);
+        }
+
+        // Calculate stats for player's moves
+        const playerMoves = data.moves.filter(m => m.color === playerColor);
+        const stats = {
+          brilliant: playerMoves.filter(m => m.classification === 'brilliant').length,
+          great: playerMoves.filter(m => m.classification === 'great').length,
+          best: playerMoves.filter(m => m.classification === 'best').length,
+          good: playerMoves.filter(m => m.classification === 'good').length,
+          inaccuracy: playerMoves.filter(m => m.classification === 'inaccuracy').length,
+          mistake: playerMoves.filter(m => m.classification === 'mistake').length,
+          blunder: playerMoves.filter(m => m.classification === 'blunder').length,
+        };
+
+        // Update stat cards
+        document.getElementById('stat-brilliant').textContent = stats.brilliant;
+        document.getElementById('stat-great').textContent = stats.great;
+        document.getElementById('stat-best').textContent = stats.best + stats.good;
+        document.getElementById('stat-inaccuracy').textContent = stats.inaccuracy;
+        document.getElementById('stat-mistake').textContent = stats.mistake;
+        document.getElementById('stat-blunder').textContent = stats.blunder;
+
+        // Summary
+        const totalErrors = stats.blunder + stats.mistake;
+        const totalBrilliant = stats.brilliant + stats.great;
+        if (totalBrilliant > 0 && totalErrors === 0) {
+          document.getElementById('analysis-summary').textContent = `Excellent game! ${totalBrilliant} brilliant/great move${totalBrilliant > 1 ? 's' : ''}!`;
+        } else if (totalErrors === 0) {
+          document.getElementById('analysis-summary').textContent = 'Solid game! No major mistakes.';
+        } else if (totalErrors <= 2) {
+          document.getElementById('analysis-summary').textContent = 'Good game with only minor errors.';
+        } else {
+          document.getElementById('analysis-summary').textContent = `Review the ${totalErrors} significant errors below.`;
+        }
+
+        // Show ALL moves (not just errors)
+        renderAnalysisMoves(data.moves);
+
+        // Update move counter
+        updateMoveCounter();
+        updateReplayButtons();
+
+      } catch (err) {
+        console.error('Analysis error:', err);
+        document.getElementById('analysis-summary').textContent = 'Failed to load analysis.';
+      }
+    }
+
+    function renderAnalysisMoves(moves) {
+      const movesContainer = document.getElementById('analysis-moves');
+      movesContainer.innerHTML = '';
+
+      moves.forEach((move, index) => {
+        const div = document.createElement('div');
+        div.className = `move-analysis ${move.classification}`;
+        div.dataset.index = index;
+
+        // Format move number (1. e4, 1... e5)
+        const moveNotation = move.color === 'white'
+          ? `${move.move_number}. ${move.move}`
+          : `${move.move_number}... ${move.move}`;
+
+        // Check/capture indicators
+        let indicators = '';
+        if (move.is_check) indicators += ' +';
+        if (move.is_sacrifice) indicators += ' !';
+
+        div.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span><strong>${moveNotation}</strong>${indicators}</span>
+            <span class="move-classification ${move.classification}">${move.classification}</span>
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">${move.comment}</div>
+          ${move.best_move ? `<div class="move-eval">Best: ${move.best_move}</div>` : ''}
+        `;
+
+        // Click to jump to this move
+        div.addEventListener('click', () => {
+          replayGoTo(index);
+        });
+
+        movesContainer.appendChild(div);
+      });
+    }
+
+    function replayGoTo(index) {
+      if (!analysisData) return;
+
+      // Clamp index
+      index = Math.max(-1, Math.min(index, analysisData.moves.length - 1));
+      currentMoveIndex = index;
+
+      // Update board position
+      if (index === -1) {
+        analysisBoard.position(analysisData.starting_fen || 'start');
+      } else {
+        const move = analysisData.moves[index];
+        analysisBoard.position(move.fen_after);
+      }
+
+      // Update move counter
+      updateMoveCounter();
+
+      // Update button states
+      updateReplayButtons();
+
+      // Highlight selected move in list
+      document.querySelectorAll('.move-analysis').forEach((el, i) => {
+        el.classList.toggle('selected', i === index);
+      });
+
+      // Scroll selected move into view
+      const selectedEl = document.querySelector(`.move-analysis[data-index="${index}"]`);
+      if (selectedEl) {
+        selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function updateMoveCounter() {
+      const counter = document.getElementById('move-counter');
+      if (currentMoveIndex === -1) {
+        counter.textContent = 'Starting position';
+      } else {
+        const move = analysisData.moves[currentMoveIndex];
+        const moveNum = move.color === 'white'
+          ? `Move ${move.move_number}. ${move.move}`
+          : `Move ${move.move_number}... ${move.move}`;
+        counter.textContent = moveNum;
+      }
+    }
+
+    function updateReplayButtons() {
+      const atStart = currentMoveIndex === -1;
+      const atEnd = !analysisData || currentMoveIndex >= analysisData.moves.length - 1;
+
+      document.getElementById('replay-first').disabled = atStart;
+      document.getElementById('replay-prev').disabled = atStart;
+      document.getElementById('replay-next').disabled = atEnd;
+      document.getElementById('replay-last').disabled = atEnd;
+    }
+
+    function closeAnalysisModal() {
+      document.getElementById('analysis-modal').classList.remove('active');
+      analysisData = null;
+      currentMoveIndex = -1;
+    }
+
+    // ===========================================
+    // Load Saved Game Modal
+    // ===========================================
+
+    async function openLoadGameModal() {
+      const modal = document.getElementById('load-game-modal');
+      const listContainer = document.getElementById('saved-games-list');
+
+      modal.classList.add('active');
+      listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">Loading saved games...</div>';
+
+      try {
+        const response = await fetch(`${API_URL}/api/games/saved`);
+        const data = await response.json();
+
+        if (data.games && data.games.length > 0) {
+          renderSavedGamesList(data.games);
+        } else {
+          listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">No saved games found.</div>';
+        }
+      } catch (err) {
+        console.error('Failed to load saved games:', err);
+        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--accent-red);">Failed to load saved games.</div>';
+      }
+    }
+
+    function renderSavedGamesList(games) {
+      const listContainer = document.getElementById('saved-games-list');
+      listContainer.innerHTML = '';
+
+      games.forEach(game => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 12px; margin-bottom: 8px; background: var(--bg-primary); border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid var(--border-color);';
+
+        // Format the date nicely
+        const date = new Date(game.date);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        // Determine result display
+        let resultColor = 'var(--text-muted)';
+        let resultText = game.result || 'In Progress';
+        if (game.result === '1-0') {
+          resultText = 'White wins';
+          resultColor = game.player_color === 'white' ? 'var(--accent-green)' : 'var(--accent-red)';
+        } else if (game.result === '0-1') {
+          resultText = 'Black wins';
+          resultColor = game.player_color === 'black' ? 'var(--accent-green)' : 'var(--accent-red)';
+        } else if (game.result === '1/2-1/2') {
+          resultText = 'Draw';
+          resultColor = 'var(--accent-yellow)';
+        } else if (!game.result) {
+          resultText = 'In Progress';
+          resultColor = 'var(--accent-blue)';
+        }
+
+        div.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <strong style="color: var(--text-primary);">${game.name || 'Unnamed Game'}</strong>
+            <span style="color: ${resultColor}; font-size: 0.85rem; font-weight: 600;">${resultText}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+            <span>Playing as ${game.player_color || 'unknown'}</span>
+            <span>${game.moves || 0} moves</span>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+            ${dateStr} at ${timeStr}
+          </div>
+        `;
+
+        div.addEventListener('mouseenter', () => {
+          div.style.borderColor = 'var(--accent-blue)';
+          div.style.transform = 'translateX(4px)';
+        });
+        div.addEventListener('mouseleave', () => {
+          div.style.borderColor = 'var(--border-color)';
+          div.style.transform = 'translateX(0)';
+        });
+
+        div.addEventListener('click', () => loadSavedGame(game.filename));
+        listContainer.appendChild(div);
+      });
+    }
+
+    async function loadSavedGame(filename) {
+      closeLoadGameModal();
+
+      try {
+        const response = await fetch(`${API_URL}/api/games/load`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          showError('Failed to load game: ' + data.error);
+          return;
+        }
+
+        // Hide setup, show game screen
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('game-screen').classList.add('active');
+        document.getElementById('new-game-btn').classList.remove('hidden');
+        document.getElementById('messages').innerHTML = '';
+
+        // Set player color from loaded game
+        playerColor = data.player_color || 'white';
+
+        // Initialize board
+        const config = {
+          draggable: true,
+          position: data.state.fen,
+          orientation: playerColor,
+          onDragStart: onDragStart,
+          onDrop: onDrop,
+          onSnapEnd: onSnapEnd,
+          pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+        };
+
+        board = Chessboard('board', config);
+        $(window).resize(() => board.resize());
+
+        // Add click-to-move handlers
+        setupClickToMove();
+
+        // Update game state
+        gameState = data.state;
+        updateGameInfo();
+        updateMovesList();
+
+        // Add system message
+        addMessage('system', `Game loaded: ${data.game_name || filename}. ${data.state.half_moves} moves played. It's ${data.state.turn}'s turn.`);
+
+        // Initialize button states
+        updateMicButton();
+        updateSpeakerButton();
+
+        // Start listening if always-on
+        setTimeout(() => {
+          if (alwaysOnMode) {
+            startListening();
+          }
+        }, 1000);
+
+      } catch (err) {
+        console.error('Failed to load game:', err);
+        showError('Failed to load game. Please try again.');
+      }
+    }
+
+    function closeLoadGameModal() {
+      document.getElementById('load-game-modal').classList.remove('active');
     }
   </script>
 </body>
