@@ -41,7 +41,8 @@ class GameState:
             "is_checkmate": self.board.is_checkmate(),
             "is_stalemate": self.board.is_stalemate(),
             "is_game_over": self.board.is_game_over(),
-            "legal_moves": [self.board.san(m) for m in self.board.legal_moves],
+            "legal_moves": [m.uci() for m in self.board.legal_moves],  # UCI for click-to-move
+            "legal_moves_san": [self.board.san(m) for m in self.board.legal_moves],
             "result": self.get_result(),
         }
 
