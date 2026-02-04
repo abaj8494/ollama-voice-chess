@@ -19,6 +19,7 @@ Examples:
   chess --model llama3.1    Use a specific Ollama model
   chess --port 9000         Use a different port
   chess --no-browser        Don't open browser automatically
+  chess --text              Run in text-only mode (for debugging)
 
 Requirements:
   - Ollama running locally (ollama serve)
@@ -57,7 +58,21 @@ Requirements:
         help="Enable debug logging"
     )
 
+    parser.add_argument(
+        "--text", "-t",
+        action="store_true",
+        help="Run in text-only mode (no browser, terminal interface)"
+    )
+
     args = parser.parse_args()
+
+    # Text mode - run the debug CLI instead
+    if args.text:
+        import asyncio
+        from .debug_cli import DebugCLI
+        cli = DebugCLI(model=args.model)
+        asyncio.run(cli.run())
+        return
 
     # Set environment variables for the server
     os.environ["CHESS_MODEL"] = args.model

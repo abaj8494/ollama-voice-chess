@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 chess = "server.cli:main"
+chess-debug = "server.debug_cli:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["."]
