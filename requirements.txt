@@ -11,5 +11,8 @@ httpx>=0.25.0
 # Chess engine
 python-chess>=1.999
 
+# Neural TTS (Microsoft Edge voices)
+edge-tts>=6.1.0
+
 # Type hints (optional but recommended)
 pydantic>=2.0.0
