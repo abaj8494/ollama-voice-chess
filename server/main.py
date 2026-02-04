@@ -4,6 +4,9 @@ Provides REST API and WebSocket for real-time game communication.
 """
 
 import asyncio
+import chess
+import chess.pgn
+import io
 import json
 import logging
 import os
@@ -14,13 +17,20 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .game import ChessGame
 from .ollama_client import OllamaClient
-from .engine import ChessEngine, get_engine
+from .engine import ChessEngine, get_engine, set_engine_skill
+from .tts import text_to_speech, get_voice_options, VOICES
+from .stats import (
+    load_stats, get_current_difficulty, set_difficulty,
+    get_stats_summary, record_game, get_difficulty_name
+)
+from .analysis import check_blunder, analyze_game, get_position_assessment
+from .tactics import analyze_tactics, get_tactical_summary
 
 # Configure logging
 logging.basicConfig(
@@ -57,10 +67,12 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     global ollama_client
 
-    # Startup - Initialize Stockfish engine
+    # Startup - Initialize Stockfish engine with saved difficulty
+    saved_difficulty = get_current_difficulty()
     engine = get_engine()
     if engine.is_running():
-        logger.info(f"Stockfish engine ready (skill level: {engine.skill_level})")
+        engine.set_skill_level(saved_difficulty)
+        logger.info(f"Stockfish engine ready (skill level: {saved_difficulty} - {get_difficulty_name(saved_difficulty)})")
     else:
         logger.warning("Stockfish not available - install with: brew install stockfish")
 
@@ -117,6 +129,19 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class DifficultyRequest(BaseModel):
+    level: int
+
+
+class SaveGameRequest(BaseModel):
+    name: Optional[str] = None
+
+
+class GameResultRequest(BaseModel):
+    result: str  # "win", "loss", "draw"
+    name: Optional[str] = None
+
+
 # REST endpoints
 @app.get("/")
 async def root():
@@ -145,6 +170,338 @@ async def list_models():
         return {"models": []}
     models = await ollama_client.list_models()
     return {"models": models}
+
+
+@app.get("/api/voices")
+async def list_voices():
+    """List available TTS voices."""
+    return {"voices": get_voice_options()}
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "ryan"
+    rate: str = "+0%"
+
+
+@app.post("/api/tts")
+async def synthesize_speech(request: TTSRequest):
+    """
+    Convert text to speech using neural TTS.
+
+    Returns MP3 audio data.
+    """
+    logger.info(f"[TTS] Request: voice={request.voice}, text={request.text[:50]}...")
+    try:
+        audio_data = await text_to_speech(
+            text=request.text,
+            voice=request.voice,
+            rate=request.rate
+        )
+        logger.info(f"[TTS] Generated {len(audio_data)} bytes")
+        return Response(
+            content=audio_data,
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": "inline; filename=speech.mp3"}
+        )
+    except Exception as e:
+        logger.error(f"TTS error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Stats and difficulty endpoints
+@app.get("/api/stats")
+async def get_player_stats():
+    """Get player statistics summary."""
+    return get_stats_summary()
+
+
+@app.get("/api/difficulty")
+async def get_difficulty():
+    """Get current difficulty level."""
+    level = get_current_difficulty()
+    return {
+        "level": level,
+        "name": get_difficulty_name(level),
+        "min": 1,
+        "max": 20
+    }
+
+
+@app.post("/api/difficulty")
+async def update_difficulty(request: DifficultyRequest):
+    """Set difficulty level manually."""
+    new_level = set_difficulty(request.level)
+    # Also update engine skill
+    set_engine_skill(new_level)
+    return {
+        "level": new_level,
+        "name": get_difficulty_name(new_level)
+    }
+
+
+@app.post("/api/game/{game_id}/save")
+async def save_game(game_id: str, request: SaveGameRequest):
+    """Save current game with optional name."""
+    game = games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name_slug = request.name.replace(" ", "_")[:30] if request.name else "game"
+    filename = f"{name_slug}_{timestamp}.pgn"
+
+    filepath = save_game_pgn(game, filename)
+    return {"filename": str(filepath), "name": request.name or "Unnamed Game"}
+
+
+@app.get("/api/games/saved")
+async def list_saved_games():
+    """List all saved games in reverse chronological order."""
+    import os
+    from datetime import datetime
+
+    saved_games = []
+    if GAMES_DIR.exists():
+        for filepath in sorted(GAMES_DIR.glob("*.pgn"), key=os.path.getmtime, reverse=True):
+            try:
+                content = filepath.read_text()
+                # Parse PGN to get game info
+                pgn_io = io.StringIO(content)
+                pgn_game = chess.pgn.read_game(pgn_io)
+
+                if pgn_game:
+                    headers = dict(pgn_game.headers)
+                    # Count moves
+                    move_count = len(list(pgn_game.mainline_moves()))
+
+                    # Get file modification time
+                    mtime = os.path.getmtime(filepath)
+                    date_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+
+                    # Extract name from filename
+                    name = filepath.stem.replace("_", " ")
+                    # Remove timestamp suffix if present
+                    if len(name) > 15 and name[-15:-7].isdigit():
+                        name = name[:-16]
+
+                    # Determine player color from headers
+                    white_player = headers.get("White", "?")
+                    black_player = headers.get("Black", "?")
+                    if "Human" in white_player or "Player" in white_player:
+                        player_color = "white"
+                    elif "Human" in black_player or "Player" in black_player:
+                        player_color = "black"
+                    else:
+                        player_color = "white"  # Default
+
+                    saved_games.append({
+                        "filename": filepath.name,
+                        "name": name or "Unnamed Game",
+                        "date": date_str,
+                        "white": white_player,
+                        "black": black_player,
+                        "player_color": player_color,
+                        "result": headers.get("Result", "*"),
+                        "moves": move_count // 2,  # Full moves
+                        "is_complete": headers.get("Result", "*") != "*",
+                    })
+            except Exception as e:
+                logger.error(f"Error reading {filepath}: {e}")
+                continue
+
+    return {"games": saved_games[:50]}  # Limit to 50 most recent
+
+
+class LoadGameRequest(BaseModel):
+    filename: str
+    player_color: Optional[str] = None  # If None, determine from PGN
+
+
+@app.post("/api/games/load")
+async def load_saved_game(request: LoadGameRequest):
+    """Load a saved game from PGN file."""
+    filepath = GAMES_DIR / request.filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Game file not found")
+
+    try:
+        content = filepath.read_text()
+        pgn_io = io.StringIO(content)
+        pgn_game = chess.pgn.read_game(pgn_io)
+
+        if not pgn_game:
+            raise HTTPException(status_code=400, detail="Invalid PGN file")
+
+        # Determine player color from headers or request
+        white_player = pgn_game.headers.get("White", "Human")
+        black_player = pgn_game.headers.get("Black", "Ollama")
+
+        if request.player_color:
+            player_color = request.player_color
+        elif "Human" in white_player or "Player" in white_player:
+            player_color = "white"
+        elif "Human" in black_player or "Player" in black_player:
+            player_color = "black"
+        else:
+            player_color = "white"  # Default
+
+        # Create new game and replay moves
+        game_id = "default"
+        game = ChessGame()
+        game.new_game(player_color)
+
+        # Replay all moves
+        for move in pgn_game.mainline_moves():
+            san = game.state.board.san(move)
+            game.state.board.push(move)
+
+        games[game_id] = game
+
+        # Extract game name from filename
+        game_name = request.filename.replace(".pgn", "").replace("_", " ")
+        # Remove timestamp suffix if present (format: name_YYYYMMDD_HHMMSS)
+        if len(game_name) > 15 and game_name[-15:-7].replace(" ", "").isdigit():
+            game_name = game_name[:-16]
+
+        return {
+            "success": True,
+            "game_id": game_id,
+            "state": game.state.to_dict(),
+            "player_color": player_color,
+            "filename": request.filename,
+            "game_name": game_name.strip() or "Loaded Game",
+        }
+
+    except Exception as e:
+        logger.error(f"Error loading game: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/game/{game_id}/record")
+async def record_game_result(game_id: str, request: GameResultRequest):
+    """Record a completed game result and update stats."""
+    game = games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    # Save the game first
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name_slug = request.name.replace(" ", "_")[:30] if request.name else "game"
+    filename = f"{name_slug}_{timestamp}.pgn"
+    filepath = save_game_pgn(game, filename)
+
+    # Get game details
+    player_color = game.state.player_color
+    moves_count = len(game.state.board.move_stack)
+
+    # Get final evaluation if engine available
+    final_eval = None
+    engine = get_engine()
+    if engine.is_running():
+        eval_result = engine.evaluate_position(game.state.board)
+        try:
+            final_eval = float(eval_result.get('score', 0))
+        except (ValueError, TypeError):
+            pass
+
+    # Record the game
+    stats = record_game(
+        result=request.result,
+        player_color=player_color,
+        moves_count=moves_count,
+        final_eval=final_eval,
+        game_name=request.name,
+        pgn_file=str(filepath)
+    )
+
+    return {
+        "recorded": True,
+        "new_difficulty": stats["current_difficulty"],
+        "difficulty_name": get_difficulty_name(stats["current_difficulty"]),
+        "stats": get_stats_summary()
+    }
+
+
+@app.get("/api/game/{game_id}/analysis")
+async def analyze_current_game(game_id: str):
+    """Analyze the current game for blunders and mistakes."""
+    game = games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    pgn_text = game.get_pgn()
+    analysis = analyze_game(pgn_text, depth=12)
+
+    if not analysis:
+        return {"error": "Analysis failed"}
+
+    # Get starting position FEN
+    starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+    return {
+        "summary": analysis.summary,
+        "starting_fen": starting_fen,
+        "white_blunders": analysis.white_blunders,
+        "white_mistakes": analysis.white_mistakes,
+        "white_inaccuracies": analysis.white_inaccuracies,
+        "black_blunders": analysis.black_blunders,
+        "black_mistakes": analysis.black_mistakes,
+        "black_inaccuracies": analysis.black_inaccuracies,
+        "critical_moments": analysis.critical_moments,
+        "moves": [
+            {
+                "move_number": m.move_number,
+                "color": m.color,
+                "move": m.move_san,
+                "classification": m.classification,
+                "comment": m.comment,
+                "eval_before": m.eval_before,
+                "eval_after": m.eval_after,
+                "eval_change": m.eval_change,
+                "best_move": m.best_move,
+                "is_capture": m.is_capture,
+                "is_check": m.is_check,
+                "is_sacrifice": m.is_sacrifice,
+                "fen_after": m.fen_after,
+            }
+            for m in analysis.moves
+        ]
+    }
+
+
+@app.get("/api/game/{game_id}/tactics")
+async def get_tactics(game_id: str):
+    """Get tactical analysis of the current position."""
+    game = games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    motifs = analyze_tactics(game.state.board)
+    return {
+        "tactics": [
+            {
+                "type": m.type,
+                "description": m.description,
+                "severity": m.severity,
+                "targets": [chess.square_name(sq) for sq in m.target_squares]
+            }
+            for m in motifs
+        ],
+        "summary": get_tactical_summary(game.state.board)
+    }
+
+
+@app.get("/api/game/{game_id}/position")
+async def get_position_info(game_id: str):
+    """Get detailed position assessment."""
+    game = games.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    return get_position_assessment(game.state.board)
 
 
 @app.post("/api/game/new")
@@ -224,13 +581,20 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     if game_id not in games:
         games[game_id] = ChessGame()
 
-    game = games[game_id]
+    # Helper to get current game (allows HTTP endpoints to replace the game)
+    def get_game() -> ChessGame:
+        if game_id not in games:
+            games[game_id] = ChessGame()
+        return games[game_id]
 
     try:
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
             logger.info(f"Received message: {msg_type}")
+
+            # Get fresh game reference for each message (allows load game to work)
+            game = get_game()
 
             if msg_type == "new_game":
                 player_color = data.get("player_color", "white")
@@ -250,8 +614,13 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                     await handle_ai_turn(websocket, game, "Let's begin. You're White, make your opening move.")
 
             elif msg_type == "move":
-                # Player makes a move
+                # Player makes a move (from drag-drop or click-to-move)
                 move_str = data.get("move", "")
+
+                # Analyze the move BEFORE making it for blunder detection
+                blunder_feedback = None
+                board_before = game.state.board.copy()
+
                 result = game.make_move(move_str)
 
                 await websocket.send_json({
@@ -259,9 +628,22 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                     "result": result
                 })
 
-                # If move was successful and it's now AI's turn
-                if result["success"] and game.is_ai_turn() and not game.state.board.is_game_over():
-                    await handle_ai_turn(websocket, game, f"I played {result['move']}.")
+                if result["success"]:
+                    # Check if the move was a blunder/mistake (for tutoring)
+                    blunder_feedback = await analyze_player_move(board_before, result['move'])
+                    save_game_pgn(game, "current_game.pgn")
+
+                    # Check for game over
+                    if game.state.board.is_game_over():
+                        await handle_game_over(websocket, game)
+                        return
+
+                    # If it's now AI's turn, make AI move
+                    if game.is_ai_turn():
+                        player_context = f"I played {result['move']}."
+                        if blunder_feedback:
+                            player_context += f" [TUTOR: {blunder_feedback}]"
+                        await handle_ai_turn(websocket, game, player_context, blunder_feedback=blunder_feedback)
 
             elif msg_type == "chat":
                 # Handle chat message - could be a move, question, or command
@@ -287,10 +669,11 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {game_id}")
         # Save game on disconnect if there are moves
-        if game and game.state.board.move_stack:
+        current_game = games.get(game_id)
+        if current_game and current_game.state.board.move_stack:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            save_game_pgn(game, f"game_{timestamp}_session.pgn")
+            save_game_pgn(current_game, f"game_{timestamp}_session.pgn")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         try:
@@ -340,20 +723,58 @@ async def handle_chat(websocket: WebSocket, game: ChessGame, message: str):
 
     # Try to parse as a move first
     move_result = try_parse_player_move(message, game)
+    logger.info(f"[PARSE] \"{message}\" -> {move_result}")
     if move_result:
+        # Analyze the move BEFORE making it for blunder detection
+        blunder_feedback = None
+        board_before = game.state.board.copy()
+
         result = game.make_move(move_result)
         if result["success"]:
             logger.info(f"[PLAYER MOVE] {result['move']}")
             save_game_pgn(game, "current_game.pgn")
+
+            # Check if the move was a blunder/mistake (for tutoring)
+            blunder_feedback = await analyze_player_move(board_before, result['move'])
 
             await websocket.send_json({
                 "type": "move_result",
                 "result": result
             })
 
-            # AI responds and moves
-            if game.is_ai_turn() and not game.state.board.is_game_over():
-                await handle_ai_turn(websocket, game, f"I played {result['move']}.")
+            # Check for game over after player's move
+            if game.state.board.is_game_over():
+                await handle_game_over(websocket, game)
+                return
+
+            # AI responds and moves, include blunder feedback
+            if game.is_ai_turn():
+                player_context = f"I played {result['move']}."
+                if blunder_feedback:
+                    player_context += f" [TUTOR: {blunder_feedback}]"
+                await handle_ai_turn(websocket, game, player_context, blunder_feedback=blunder_feedback)
+            return
+        else:
+            # Move was parsed but invalid - tell user why
+            error_msg = result.get("error", "Invalid move")
+            legal_moves = game.get_legal_moves()
+            logger.info(f"[INVALID MOVE] {move_result}: {error_msg}")
+
+            # Check if it's not their turn
+            if not game.is_ai_turn():
+                # It's the player's turn but move was illegal
+                await websocket.send_json({
+                    "type": "ai_response",
+                    "message": f"That move isn't legal right now. {error_msg}",
+                    "move": None
+                })
+            else:
+                # It's AI's turn - player trying to move out of turn
+                await websocket.send_json({
+                    "type": "ai_response",
+                    "message": "Hold on - it's my turn to move!",
+                    "move": None
+                })
             return
 
     # Check for ambiguous move requests and help the player
@@ -378,7 +799,31 @@ async def handle_chat(websocket: WebSocket, game: ChessGame, message: str):
         })
         return
 
-    # Not a move - send to AI for conversation
+    # Check if this is a question/request (not a move attempt)
+    question_words = ['explain', 'why', 'what', 'how', 'analyze', 'analyse', 'analysis',
+                      'help', 'hint', 'tell', 'show', 'can we', 'can you', 'could you', '?']
+    is_question = any(word in message_lower for word in question_words)
+
+    if is_question:
+        # This is a question - send to AI for tutoring
+        await handle_ai_turn(websocket, game, message)
+        return
+
+    # Not a recognized move or command - check if it looks like they're trying to make a move
+    move_keywords = ['move', 'play', 'take', 'capture', 'go', 'push']
+    looks_like_move_attempt = any(kw in message_lower for kw in move_keywords)
+
+    if looks_like_move_attempt and not game.is_ai_turn():
+        # They seem to be trying to make a move but we couldn't parse it
+        legal_moves = game.get_legal_moves()[:10]
+        await websocket.send_json({
+            "type": "ai_response",
+            "message": f"I didn't catch that move. Try saying it like 'e4' or 'knight to f3'. Some legal moves: {', '.join(legal_moves)}",
+            "move": None
+        })
+        return
+
+    # Send to AI for conversation (questions, chat, etc.)
     await handle_ai_turn(websocket, game, message)
 
 
@@ -390,10 +835,22 @@ def try_parse_player_move(text: str, game: ChessGame) -> Optional[str]:
     import re
     text_lower = text.lower().strip()
 
-    # Normalize: remove extra spaces, handle "e 4" -> "e4"
-    normalized = re.sub(r'([a-h])\s+([1-8])', r'\1\2', text_lower)
-    # Handle "knight f 3" -> "knight f3"
+    # Handle spoken numbers FIRST: "e four" -> "e 4", "knight f three" -> "knight f 3"
+    number_words = {"one": "1", "two": "2", "three": "3", "four": "4",
+                    "five": "5", "six": "6", "seven": "7", "eight": "8"}
+    normalized = text_lower
+    for word, digit in number_words.items():
+        normalized = re.sub(rf'\b{word}\b', digit, normalized)
+
+    # Remove extra spaces: "e 4" -> "e4", "d 4" -> "d4"
     normalized = re.sub(r'([a-h])\s+([1-8])', r'\1\2', normalized)
+
+    # Handle "takes on" -> "takes" (common speech pattern)
+    normalized = re.sub(r'takes?\s+on\s+', 'takes ', normalized)
+    normalized = re.sub(r'capture\s+on\s+', 'captures ', normalized)
+
+    # Handle "on d4" -> "d4" (remove standalone "on" before square)
+    normalized = re.sub(r'\bon\s+([a-h][1-8])\b', r'\1', normalized)
 
     # Handle castling - various spoken forms
     castling_kingside = ["castle kingside", "castle king side", "short castle",
@@ -403,61 +860,153 @@ def try_parse_player_move(text: str, game: ChessGame) -> Optional[str]:
                           "castles queenside", "castle long", "queenside castle",
                           "castle queen", "oh oh oh", "o-o-o"]
 
-    if any(phrase in text_lower for phrase in castling_kingside):
+    if any(phrase in normalized for phrase in castling_kingside):
         return "O-O"
-    if any(phrase in text_lower for phrase in castling_queenside):
+    if any(phrase in normalized for phrase in castling_queenside):
         return "O-O-O"
 
-    # Standard algebraic notation (with normalized text)
-    san_pattern = r'\b([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?)\b'
-    match = re.search(san_pattern, normalized, re.IGNORECASE)
-    if match:
-        return match.group(1)
-
-    # Spoken format: "knight to f3", "bishop takes c6", "pawn e4"
+    # Piece name map for spoken moves
     piece_map = {
         "knight": "N", "bishop": "B", "rook": "R",
         "queen": "Q", "king": "K", "pawn": ""
     }
 
-    # Pattern handles: "knight to f3", "knight f3", "bishop takes c6", etc.
-    spoken_pattern = r'\b(knight|bishop|rook|queen|king|pawn)?\s*(?:to|takes?|captures?|on)?\s*([a-h])\s*([1-8])\b'
-    match = re.search(spoken_pattern, normalized)
+    # Check for capture moves: "queen takes d4", "knight captures e5"
+    capture_pattern = r'\b(knight|bishop|rook|queen|king|pawn)\s+(?:takes?|captures?|x)\s*([a-h])([1-8])\b'
+    match = re.search(capture_pattern, normalized)
     if match:
-        piece = piece_map.get(match.group(1), "") if match.group(1) else ""
+        piece = piece_map.get(match.group(1), "")
+        file = match.group(2)
+        rank = match.group(3)
+        return f"{piece}x{file}{rank}"
+
+    # Check for regular moves: "queen d4", "knight to f3", "bishop e5"
+    move_pattern = r'\b(knight|bishop|rook|queen|king|pawn)\s+(?:to\s+)?([a-h])([1-8])\b'
+    match = re.search(move_pattern, normalized)
+    if match:
+        piece = piece_map.get(match.group(1), "")
         file = match.group(2)
         rank = match.group(3)
         return f"{piece}{file}{rank}"
 
-    # Handle spoken numbers: "e four", "knight f three"
-    number_words = {"one": "1", "two": "2", "three": "3", "four": "4",
-                    "five": "5", "six": "6", "seven": "7", "eight": "8"}
-    for word, digit in number_words.items():
-        normalized = normalized.replace(word, digit)
-
-    # Try pattern again with number words replaced
+    # Standard algebraic notation: "Qxd4", "Nf3", "e4"
+    san_pattern = r'\b([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?)\b'
     match = re.search(san_pattern, normalized, re.IGNORECASE)
     if match:
-        return match.group(1)
+        move = match.group(1)
+        # Uppercase piece letters
+        if len(move) > 2 and move[0].lower() in 'kqrbn':
+            move = move[0].upper() + move[1:]
+        return move
 
-    match = re.search(spoken_pattern, normalized)
+    # Simple pawn move: just "d4" or "e4"
+    simple_pattern = r'\b([a-h][1-8])\b'
+    match = re.search(simple_pattern, normalized)
     if match:
-        piece = piece_map.get(match.group(1), "") if match.group(1) else ""
-        file = match.group(2)
-        rank = match.group(3)
-        return f"{piece}{file}{rank}"
+        return match.group(1)
 
     return None
 
 
-async def handle_ai_turn(websocket: WebSocket, game: ChessGame, player_message: str):
+async def analyze_player_move(board_before: chess.Board, move_san: str) -> Optional[str]:
+    """
+    Analyze the player's move for blunders, mistakes, and teaching opportunities.
+
+    Returns feedback string if there's something to teach, None otherwise.
+    """
+    engine = get_engine()
+    if not engine.is_running():
+        return None
+
+    try:
+        # Parse the move
+        move = board_before.parse_san(move_san)
+
+        # Get evaluation before the move
+        result_before = engine.get_best_move(board_before)
+        if not result_before:
+            return None
+
+        best_move, analysis_before = result_before
+        eval_before = float(analysis_before.get('score', 0))
+        best_move_san = analysis_before.get('move')
+
+        # Make the move on a copy
+        board_after = board_before.copy()
+        board_after.push(move)
+
+        # Get evaluation after the move
+        result_after = engine.get_best_move(board_after)
+        if not result_after:
+            return None
+
+        _, analysis_after = result_after
+        eval_after = float(analysis_after.get('score', 0))
+
+        # Calculate loss from player's perspective
+        is_white = board_before.turn == chess.WHITE
+        if is_white:
+            eval_loss = (eval_before - eval_after) * 100  # Centipawns
+        else:
+            eval_loss = ((-eval_before) - (-eval_after)) * 100
+
+        # Classify the move
+        played_is_best = best_move_san and move_san == best_move_san
+
+        # Log the analysis
+        logger.info(f"[MOVE ANALYSIS] {move_san}: eval_before={eval_before:.2f}, eval_after={eval_after:.2f}, "
+                   f"loss={eval_loss:.0f}cp, best={best_move_san}")
+
+        # Generate feedback based on severity
+        if eval_loss > 200:  # Blunder (>2 pawns)
+            feedback = f"That was a blunder! You lost about {eval_loss/100:.1f} pawns of advantage. "
+            if best_move_san and not played_is_best:
+                feedback += f"{best_move_san} was much better."
+
+            # Check for tactical issues
+            tactics = analyze_tactics(board_after)
+            critical = [t for t in tactics if t.severity == 'critical']
+            if critical:
+                feedback += f" Watch out: {critical[0].description}"
+
+            return feedback
+
+        elif eval_loss > 100:  # Mistake (>1 pawn)
+            feedback = f"That's a mistake - you lost about {eval_loss/100:.1f} pawns. "
+            if best_move_san and not played_is_best:
+                feedback += f"Consider {best_move_san} next time."
+            return feedback
+
+        elif eval_loss > 50:  # Inaccuracy (>0.5 pawns)
+            if best_move_san and not played_is_best:
+                return f"Small inaccuracy. {best_move_san} was slightly better."
+
+        # Check for positional issues even if not a clear mistake
+        tactics = analyze_tactics(board_after)
+        warnings = [t for t in tactics if t.severity in ['warning', 'critical']]
+
+        # Warn about hanging pieces or threats created against player
+        for tactic in warnings[:1]:  # Just the first warning
+            if 'hanging' in tactic.type.lower():
+                return f"Be careful! {tactic.description}"
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Move analysis error: {e}")
+        return None
+
+
+async def handle_ai_turn(websocket: WebSocket, game: ChessGame, player_message: str, blunder_feedback: Optional[str] = None):
     """
     Handle AI's turn using Stockfish for moves, Ollama for commentary.
 
     Architecture:
     - Stockfish: Generates strong, tactically sound moves
-    - Ollama: Explains the move and handles conversation
+    - Ollama: Explains the move using Stockfish's analysis
     """
+    import asyncio
+
     # Send thinking indicator
     await websocket.send_json({
         "type": "ai_thinking",
@@ -470,22 +1019,64 @@ async def handle_ai_turn(websocket: WebSocket, game: ChessGame, player_message: 
     try:
         ai_move = None
         engine_analysis = None
+        move_context = None
+        last_move = None
+        board_before_move = None
+        detailed_thinking = []
 
         # If it's AI's turn, use Stockfish for the move
         if is_ai_turn:
             engine = get_engine()
 
             if engine.is_running():
-                # Get Stockfish's best move
+                # Enhanced thinking: Analyze position first
+                logger.info("[AI THINKING] Analyzing position...")
+
+                # Get tactical analysis
+                tactics = analyze_tactics(game.state.board)
+                if tactics:
+                    for tactic in tactics[:3]:
+                        logger.info(f"[TACTICS] {tactic.type}: {tactic.description}")
+                        detailed_thinking.append(f"Tactical: {tactic.description}")
+
+                # Small delay to simulate thinking (makes AI feel more natural)
+                await asyncio.sleep(0.5)
+
+                # Get Stockfish's analysis with multiple candidate moves
                 result = engine.get_best_move(game.state.board)
 
                 if result:
                     move, analysis = result
                     engine_analysis = analysis
+                    last_move = move
 
-                    # Log engine thinking
-                    logger.info(f"[STOCKFISH] Best: {analysis['move']}, Eval: {analysis['score']}, "
-                               f"Depth: {analysis['depth']}, Line: {' '.join(analysis['pv'])}")
+                    # Enhanced logging: Show thinking process
+                    logger.info(f"[AI THINKING] Evaluating position...")
+                    logger.info(f"[STOCKFISH] Best move: {analysis['move']} (eval: {analysis['score']})")
+                    logger.info(f"[STOCKFISH] Search depth: {analysis['depth']}")
+                    logger.info(f"[STOCKFISH] Principal variation: {' '.join(analysis['pv'][:5])}")
+
+                    # Log what the AI is "considering"
+                    pv = analysis.get('pv', [])
+                    if len(pv) >= 2:
+                        logger.info(f"[AI THINKING] If I play {pv[0]}, opponent likely responds {pv[1]}...")
+                        detailed_thinking.append(f"Considering {pv[0]}, anticipating {pv[1]}")
+
+                    # Check what threats are being created
+                    board_copy = game.state.board.copy()
+                    board_copy.push(move)
+                    post_move_tactics = analyze_tactics(board_copy)
+                    new_threats = [t for t in post_move_tactics if t.severity in ['warning', 'critical']]
+                    if new_threats:
+                        for threat in new_threats[:2]:
+                            logger.info(f"[AI THINKING] This creates: {threat.description}")
+                            detailed_thinking.append(f"Creates threat: {threat.description}")
+
+                    # Save board state BEFORE making the move (for accurate commentary)
+                    board_before_move = game.state.board.copy()
+
+                    # Get move context BEFORE making the move
+                    move_context = engine.get_move_explanation_context(game.state.board, move)
 
                     # Make the move
                     move_result = game.make_move(analysis['move'])
@@ -502,35 +1093,52 @@ async def handle_ai_turn(websocket: WebSocket, game: ChessGame, player_message: 
                     move_result = game.make_move(fallback)
                     if move_result["success"]:
                         ai_move = move_result["move"]
+                        move_context = ai_move
                         logger.info(f"[FALLBACK MOVE] {ai_move}")
                         save_game_pgn(game, "current_game.pgn")
 
-        # Generate natural language response using Ollama
+        # Generate commentary - uses Stockfish analysis, NOT LLM hallucination
         response = await generate_move_commentary(
-            game, player_message, ai_move, engine_analysis, is_ai_turn
+            game, player_message, ai_move, engine_analysis, move_context, is_ai_turn,
+            last_move=last_move, board_before_move=board_before_move
         )
 
         # Store in conversation history
         game.add_conversation("user", player_message)
         game.add_conversation("assistant", response)
 
+        # Extract move squares for replay feature
+        move_from = None
+        move_to = None
+        if last_move:
+            move_from = chess.square_name(last_move.from_square)
+            move_to = chess.square_name(last_move.to_square)
+
+        # If there's blunder feedback, prepend it to the response
+        full_response = response
+        if blunder_feedback:
+            full_response = f"{blunder_feedback} Now, {response}"
+            logger.info(f"[TUTOR] {blunder_feedback}")
+
+        logger.info(f"[RESPONSE] Sending ai_response: move={ai_move}, message={full_response[:50]}...")
         await websocket.send_json({
             "type": "ai_response",
-            "message": response,
+            "message": full_response,
             "move": ai_move,
+            "move_from": move_from,
+            "move_to": move_to,
+            "blunder_feedback": blunder_feedback,
             "state": game.state.to_dict()
         })
 
         # Check for game over
         if game.state.board.is_game_over():
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            save_game_pgn(game, f"game_{timestamp}_final.pgn")
-            result = game.state.get_result()
-            logger.info(f"[GAME OVER] {result}")
+            await handle_game_over(websocket, game)
 
     except Exception as e:
         logger.error(f"AI turn error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         await websocket.send_json({
             "type": "error",
             "message": f"AI error: {str(e)}"
@@ -548,83 +1156,127 @@ async def generate_move_commentary(
     player_message: str,
     ai_move: Optional[str],
     engine_analysis: Optional[dict],
-    is_ai_turn: bool
+    move_context: Optional[str],
+    is_ai_turn: bool,
+    last_move: Optional[chess.Move] = None,
+    board_before_move: Optional[chess.Board] = None
 ) -> str:
     """
     Generate natural language commentary for a move or respond to questions.
 
-    Uses Ollama for conversational responses, but keeps them SHORT for speech.
+    For moves: Uses Stockfish analysis + board state for ACCURATE commentary (no LLM hallucination)
+    For questions: Uses Ollama with structured Stockfish analysis
     """
-    # If no Ollama, just return the move
-    if not ollama_client:
-        if ai_move:
-            return f"{ai_move}."
-        return "Your turn."
-
-    # Check if this is a question (tutor mode) or just a move notification
+    # Check if this is a question (tutor mode)
     is_question = any(word in player_message.lower() for word in
-                      ['why', 'what', 'how', 'explain', 'help', 'hint', '?'])
+                      ['why', 'what', 'how', 'explain', 'help', 'hint', 'analyze', 'analyse',
+                       'analysis', 'can we', 'can you', 'could you', 'review', 'look at', '?'])
 
-    if is_question and not is_ai_turn:
-        # Tutor mode - give a detailed explanation
-        game_context = f"""Position: {game.get_formatted_history()}
-{game.get_position_description()}
+    if is_question:
+        # Tutor mode - get fresh analysis and give detailed explanation
+        engine = get_engine()
+        stockfish_analysis = {}
 
-The player asked: "{player_message}"
+        if engine.is_running():
+            stockfish_analysis = engine.evaluate_position(game.state.board)
 
-Give a helpful, educational response about chess strategy or the position."""
+        if ollama_client:
+            response = await ollama_client.answer_question(
+                question=player_message,
+                position_fen=game.state.board.fen(),
+                move_history=game.get_formatted_history(),
+                stockfish_analysis=stockfish_analysis,
+                conversation_history=game.get_conversation_history()[-4:],
+            )
+            logger.info(f"[TUTOR] {response[:100]}...")
+            return response
+        else:
+            # No Ollama - return Stockfish analysis directly
+            if stockfish_analysis.get('best_moves'):
+                lines = [f"Position evaluation: {stockfish_analysis.get('score', '0.0')}"]
+                for i, mv in enumerate(stockfish_analysis.get('best_moves', [])[:3], 1):
+                    lines.append(f"{i}. {mv['move']} (eval: {mv['score']})")
+                return " | ".join(lines)
+            return "Position is roughly equal."
 
-        response = await ollama_client.chat(
-            user_message=player_message,
-            game_context=game_context,
-            conversation_history=game.get_conversation_history()[-4:],
-            is_ai_turn=False,
-            legal_moves=[]
-        )
-        logger.info(f"[TUTOR] {response}")
-        return response
+    elif ai_move and engine_analysis and board_before_move and last_move:
+        # Just made a move - use ACCURATE Stockfish-based commentary (no LLM)
+        engine = get_engine()
+        if engine.is_running():
+            commentary = engine.generate_move_commentary(board_before_move, last_move, engine_analysis)
+            logger.info(f"[COMMENT] {commentary}")
+            return commentary
+        else:
+            return f"{ai_move}."
 
     elif ai_move:
-        # Just made a move - give a VERY brief comment
-        # Build context about what the move does
-        eval_info = ""
-        if engine_analysis:
-            score = engine_analysis.get('score', '0.0')
-            eval_info = f"Position evaluation: {score}"
-
-        context = f"""You just played {ai_move}.
-{eval_info}
-Say your move and add ONE short comment (max 8 words). Be natural, like talking to a friend.
-Examples: "{ai_move}." or "{ai_move}, developing my knight." or "I'll take that pawn."""
-
-        try:
-            response = await ollama_client.chat(
-                user_message=f"I played, now it's your turn. You play {ai_move}.",
-                game_context=context,
-                conversation_history=[],
-                is_ai_turn=False,  # We already made the move
-                legal_moves=[]
-            )
-
-            # Clean and shorten the response
-            import re
-            response = re.sub(r'\*\*[^*]+\*\*', '', response)
-            response = response.strip()
-
-            # If response is too long, just use the move
-            if len(response) > 80:
-                response = f"{ai_move}."
-
-            logger.info(f"[COMMENT] {response}")
-            return response
-
-        except Exception as e:
-            logger.error(f"Commentary error: {e}")
-            return f"{ai_move}."
+        # Move without full analysis
+        return f"{ai_move}."
 
     else:
-        # No move, just conversation
-        return "Your turn."
+        # No move, just acknowledge
+        return "Your move."
+
+
+async def handle_game_over(websocket: WebSocket, game: ChessGame):
+    """Handle game over - send result and stats to frontend."""
+    from datetime import datetime
+    board = game.state.board
+    player_color = game.state.player_color
+
+    # Determine result
+    result_str = board.result()  # "1-0", "0-1", "1/2-1/2"
+    is_checkmate = board.is_checkmate()
+    is_stalemate = board.is_stalemate()
+    is_draw = board.is_game_over() and not is_checkmate
+
+    # Determine who won from player's perspective
+    if result_str == "1-0":
+        player_result = "win" if player_color == "white" else "loss"
+        winner = "White"
+    elif result_str == "0-1":
+        player_result = "win" if player_color == "black" else "loss"
+        winner = "Black"
+    else:
+        player_result = "draw"
+        winner = None
+
+    # Generate result message
+    if is_checkmate:
+        if player_result == "win":
+            message = "Checkmate! Congratulations, you won!"
+        else:
+            message = "Checkmate! I got you this time. Good game!"
+    elif is_stalemate:
+        message = "Stalemate! The game is a draw."
+    elif is_draw:
+        reason = ""
+        if board.is_insufficient_material():
+            reason = "insufficient material"
+        elif board.is_fifty_moves():
+            reason = "fifty-move rule"
+        elif board.is_repetition():
+            reason = "threefold repetition"
+        message = f"Draw by {reason}!" if reason else "The game is a draw!"
+    else:
+        message = "Game over!"
+
+    logger.info(f"[GAME OVER] {result_str} - Player {player_result}")
+
+    # Send game_over event to frontend
+    await websocket.send_json({
+        "type": "game_over",
+        "result": player_result,
+        "result_notation": result_str,
+        "winner": winner,
+        "is_checkmate": is_checkmate,
+        "is_stalemate": is_stalemate,
+        "is_draw": is_draw,
+        "message": message,
+        "moves_count": len(board.move_stack),
+        "player_color": player_color,
+        "state": game.state.to_dict()
+    })
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True):
