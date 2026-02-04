@@ -86,6 +86,22 @@ class ChessEngine:
         """Check if engine is running."""
         return self.engine is not None
 
+    def _pv_to_san(self, board: chess.Board, pv: list, max_moves: int = 5) -> list:
+        """
+        Convert a principal variation (list of moves) to SAN notation.
+
+        Uses a board copy to properly convert each move in sequence.
+        """
+        san_moves = []
+        temp_board = board.copy()
+        for move in pv[:max_moves]:
+            try:
+                san_moves.append(temp_board.san(move))
+                temp_board.push(move)
+            except Exception:
+                break  # Stop if we hit an invalid move
+        return san_moves
+
     def get_best_move(self, board: chess.Board) -> Optional[Tuple[chess.Move, dict]]:
         """
         Get the best move for the current position.
@@ -113,11 +129,12 @@ class ChessEngine:
                 move = result.move
 
             # Extract analysis info
+            pv = result.get("pv", [])
             info = {
                 "move": board.san(move) if move else None,
                 "score": self._format_score(result.get("score")),
                 "depth": result.get("depth", 0),
-                "pv": [board.san(m) for m in result.get("pv", [])[:5]],  # Principal variation
+                "pv": self._pv_to_san(board, pv),  # Principal variation
                 "nodes": result.get("nodes", 0),
             }
 
@@ -159,7 +176,7 @@ class ChessEngine:
                     best_moves.append({
                         "move": board.san(pv[0]),
                         "score": self._format_score(analysis.get("score")),
-                        "line": [board.san(m) for m in pv[:4]]
+                        "line": self._pv_to_san(board, pv, max_moves=4)
                     })
 
             main_score = analyses[0].get("score") if analyses else None
@@ -249,6 +266,112 @@ class ChessEngine:
         if explanations:
             return f"{san} - {', '.join(explanations)}"
         return san
+
+    def generate_move_commentary(
+        self,
+        board: chess.Board,
+        move: chess.Move,
+        analysis: dict
+    ) -> str:
+        """
+        Generate accurate, non-hallucinating commentary for a move.
+
+        Based purely on board state and Stockfish analysis - no LLM guessing.
+        """
+        san = board.san(move)
+        comments = []
+
+        piece = board.piece_at(move.from_square)
+        piece_name = chess.piece_name(piece.piece_type).capitalize() if piece else "Piece"
+        is_white = piece.color == chess.WHITE if piece else True
+
+        # What does the move physically do?
+        if board.is_capture(move):
+            captured = board.piece_at(move.to_square)
+            if captured:
+                cap_name = chess.piece_name(captured.piece_type)
+                comments.append(f"taking the {cap_name}")
+
+        # Check for castling
+        if board.is_castling(move):
+            if board.is_kingside_castling(move):
+                return f"{san}. Castling short for king safety."
+            else:
+                return f"{san}. Castling long."
+
+        # Check for checks after the move
+        board.push(move)
+        is_check = board.is_check()
+        is_checkmate = board.is_checkmate()
+        board.pop()
+
+        if is_checkmate:
+            return f"{san}. Checkmate!"
+        if is_check:
+            comments.append("with check")
+
+        # Pawn-specific comments
+        if piece and piece.piece_type == chess.PAWN:
+            to_rank = chess.square_rank(move.to_square)
+            from_rank = chess.square_rank(move.from_square)
+
+            if to_rank in [0, 7]:
+                comments.append("promoting")
+            elif abs(to_rank - from_rank) == 2:
+                # Double pawn push
+                to_file = chess.square_file(move.to_square)
+                if to_file in [3, 4]:  # d or e file
+                    comments.append("fighting for the center")
+                else:
+                    comments.append("pushing forward")
+
+        # Development comments for minor pieces
+        if piece and piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+            from_rank = chess.square_rank(move.from_square)
+            start_rank = 0 if is_white else 7
+            if from_rank == start_rank:
+                comments.append("developing")
+
+        # Use evaluation to add context
+        score_str = analysis.get('score', '0.0')
+        try:
+            if score_str.startswith('M'):
+                mate_in = int(score_str[1:])
+                if (mate_in > 0) == (not is_white):  # AI is winning
+                    comments.append(f"mate in {abs(mate_in)}")
+            else:
+                score = float(score_str)
+                # From AI's perspective (playing as black usually)
+                if not is_white:  # AI just moved as black
+                    if score < -1.5:
+                        comments.append("gaining advantage")
+                    elif score < -3.0:
+                        comments.append("winning position")
+        except (ValueError, TypeError):
+            pass
+
+        # Build the final comment
+        if comments:
+            comment_str = ", ".join(comments)
+            # Capitalize first letter
+            comment_str = comment_str[0].upper() + comment_str[1:]
+            return f"{san}. {comment_str}."
+        else:
+            # Generic but honest fallback based on piece type
+            if piece:
+                if piece.piece_type == chess.KNIGHT:
+                    return f"{san}. Repositioning the knight."
+                elif piece.piece_type == chess.BISHOP:
+                    return f"{san}. Placing the bishop."
+                elif piece.piece_type == chess.ROOK:
+                    return f"{san}. Activating the rook."
+                elif piece.piece_type == chess.QUEEN:
+                    return f"{san}. Moving the queen."
+                elif piece.piece_type == chess.KING:
+                    return f"{san}. Moving the king."
+                elif piece.piece_type == chess.PAWN:
+                    return f"{san}. Advancing the pawn."
+            return f"{san}."
 
 
 # Global engine instance
