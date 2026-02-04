@@ -12,28 +12,33 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 
-SYSTEM_PROMPT = """You are a chess coach and opponent. You play smart chess and help the player learn.
+SYSTEM_PROMPT = """You are a chess coach and opponent playing a game.
 
-CRITICAL RULES FOR MOVES:
-1. When making a move, you MUST include it in this exact format: **Move: [move]**
-2. Use standard algebraic notation: e4, Nf3, Bxc6+, O-O (kingside castle), O-O-O (queenside castle)
-3. ONLY choose from the legal moves provided - any other move is invalid!
+CRITICAL - WHEN MAKING A MOVE:
+1. You will be given a list of LEGAL MOVES - you MUST pick ONE from that list
+2. Format your move EXACTLY as: **Move: [move]** (e.g., **Move: e5** or **Move: Nf6**)
+3. Copy the move notation EXACTLY as shown in the legal moves list
+4. DO NOT invent moves - if a move isn't in the list, it's illegal!
+
+GOOD CHESS PRINCIPLES:
+- In the opening: control the center (e5, d5, d6, e6), develop knights before bishops (Nf6, Nc6), castle early
+- Avoid moving the same piece twice in the opening
+- Don't bring the queen out too early
+- Knights on the rim are dim - develop them toward the center
+- Connect your rooks after castling
 
 YOUR ROLE:
-- Play thoughtful, instructive chess - not too easy, not crushing
-- Explain your thinking briefly (1-2 sentences)
-- If asked questions, be helpful and encouraging
-- When the player makes mistakes, gently point out what they missed
-- Keep responses concise since they'll be spoken aloud
+- Play solid, sensible chess moves
+- Briefly explain your move (1-2 sentences)
+- Be friendly and helpful if asked questions
+- Keep responses concise
 
-RESPONDING TO QUESTIONS:
-- "How many moves?" - Tell them the total number of moves played
-- "What's the position?" - Describe the key features
-- "Undo" / "Take back" - Acknowledge and let them redo
-- "Hint" / "Help" - Give a gentle nudge without giving it away
-- General chat - Be friendly and conversational
+When responding to questions (no move needed):
+- "How many moves?" - State the move count
+- "Undo" - Acknowledge and let them retry
+- "Hint" - Give a gentle hint without revealing the best move
 
-IMPORTANT: When it's your turn, you MUST include **Move: [move]** with a legal move from the provided list."""
+REMEMBER: Your move MUST be from the legal moves list. Copy it exactly!"""
 
 
 class OllamaClient:
@@ -86,13 +91,24 @@ class OllamaClient:
             The AI's response text
         """
         # Build context message
-        context = f"""[GAME STATE]
+        if is_ai_turn:
+            # Categorize moves for better selection
+            context = f"""[GAME STATE]
 {game_context}
-{f"IT'S YOUR TURN. Legal moves: {', '.join(legal_moves[:30])}" if is_ai_turn else "It's the player's turn."}
+
+[YOUR LEGAL MOVES - pick ONE]:
+{', '.join(legal_moves)}
 
 [PLAYER SAYS]: "{user_message}"
 
-{f"Remember: Include **Move: [move]** with ONE move from the legal moves list above." if is_ai_turn else ""}"""
+RESPOND with **Move: [move]** using EXACTLY one move from the legal moves list above."""
+        else:
+            context = f"""[GAME STATE]
+{game_context}
+
+[PLAYER SAYS]: "{user_message}"
+
+(It's the player's turn - just respond to their message, no move needed from you.)"""
 
         # Build messages for API
         messages = [
@@ -138,13 +154,23 @@ class OllamaClient:
         Stream a chat response from Ollama.
         Yields chunks of text as they arrive.
         """
-        context = f"""[GAME STATE]
+        if is_ai_turn:
+            context = f"""[GAME STATE]
 {game_context}
-{f"IT'S YOUR TURN. Legal moves: {', '.join(legal_moves[:30])}" if is_ai_turn else "It's the player's turn."}
+
+[YOUR LEGAL MOVES - pick ONE]:
+{', '.join(legal_moves)}
 
 [PLAYER SAYS]: "{user_message}"
 
-{f"Remember: Include **Move: [move]** with ONE move from the legal moves list above." if is_ai_turn else ""}"""
+RESPOND with **Move: [move]** using EXACTLY one move from the legal moves list above."""
+        else:
+            context = f"""[GAME STATE]
+{game_context}
+
+[PLAYER SAYS]: "{user_message}"
+
+(It's the player's turn - just respond to their message, no move needed from you.)"""
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
