@@ -39,3 +39,4 @@ Thumbs.db
 
 # Project specific
 chess_games/*.pgn
+data/player_stats.json
