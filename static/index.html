@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Chess</title>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-blue: #3b82f6;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --accent-yellow: #eab308;
+      --border-color: rgba(255,255,255,0.1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      min-height: 100vh;
+      color: var(--text-primary);
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .connection-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-red);
+    }
+
+    .connection-dot.connected {
+      background: var(--accent-green);
+    }
+
+    /* Setup Screen */
+    .setup-screen {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .setup-card {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 480px;
+      width: 100%;
+      border: 1px solid var(--border-color);
+    }
+
+    .setup-card h2 {
+      text-align: center;
+      margin-bottom: 24px;
+      font-size: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    .color-picker {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .color-btn {
+      padding: 16px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .color-btn.white {
+      background: #f8fafc;
+      color: #1e293b;
+    }
+
+    .color-btn.black {
+      background: #1e293b;
+      color: #f8fafc;
+      border-color: var(--border-color);
+    }
+
+    .color-btn:hover { transform: scale(1.02); }
+    .color-btn.selected { border-color: var(--accent-blue); box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+
+    .color-btn .piece {
+      font-size: 2rem;
+    }
+
+    .start-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent-blue);
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: all 0.2s;
+    }
+
+    .start-btn:hover { background: #2563eb; }
+    .start-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error-msg {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 0.875rem;
+      text-align: center;
+    }
+
+    /* Game Screen */
+    .game-screen {
+      flex: 1;
+      display: none;
+      grid-template-columns: 1fr 380px;
+      gap: 0;
+    }
+
+    .game-screen.active {
+      display: grid;
+    }
+
+    @media (max-width: 900px) {
+      .game-screen { grid-template-columns: 1fr; }
+      .chat-panel { border-left: none; border-top: 1px solid var(--border-color); }
+    }
+
+    /* Board Panel */
+    .board-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      background: var(--bg-primary);
+    }
+
+    .game-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .turn-badge {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
+    .turn-badge.white { background: #f8fafc; color: #1e293b; }
+    .turn-badge.black { background: #1e293b; color: #f8fafc; border: 1px solid var(--border-color); }
+
+    .status-text {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .status-text.thinking { color: var(--accent-yellow); }
+    .status-text.check { color: var(--accent-red); font-weight: 600; }
+    .status-text.game-over { color: var(--accent-green); font-weight: 600; }
+
+    .board-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #board {
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .board-controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      justify-content: center;
+    }
+
+    .board-controls button {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .board-controls button:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    /* Chat Panel */
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border-color);
+    }
+
+    .chat-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-header h3 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+    }
+
+    .voice-controls {
+      display: flex;
+      gap: 4px;
+    }
+
+    .voice-controls button {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .voice-controls button.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: white;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .message {
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .message.user {
+      background: var(--accent-blue);
+      margin-left: 40px;
+    }
+
+    .message.assistant {
+      background: var(--bg-tertiary);
+      margin-right: 40px;
+    }
+
+    .message.system {
+      background: rgba(234, 179, 8, 0.15);
+      color: var(--accent-yellow);
+      text-align: center;
+      font-size: 0.8rem;
+    }
+
+    .message-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .move-badge {
+      background: var(--accent-green);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.7rem;
+    }
+
+    .thinking-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--bg-tertiary);
+      border-radius: 12px;
+      margin-right: 40px;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .thinking-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .thinking-dots span {
+      width: 6px;
+      height: 6px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+
+    /* Voice Input */
+    .voice-input-area {
+      padding: 16px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .mic-button {
+      width: 100%;
+      padding: 16px;
+      border-radius: 12px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+
+    .mic-button.idle {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .mic-button.listening {
+      background: var(--accent-red);
+      color: white;
+      animation: pulse 1.5s infinite;
+    }
+
+    .mic-button.speaking {
+      background: var(--accent-green);
+      color: white;
+    }
+
+    .mic-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    .transcript {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      min-height: 36px;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+
+    .chat-input-area {
+      padding: 0 16px 16px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .chat-input-area input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+    }
+
+    .chat-input-area input:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
+    .chat-input-area button {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent-blue);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .chat-input-area button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Move History */
+    .move-history {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border-color);
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    .move-history h4 {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .moves-list {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.8rem;
+    }
+
+    .move-pair {
+      display: flex;
+      margin-bottom: 2px;
+    }
+
+    .move-num { color: var(--text-muted); width: 28px; }
+    .move-white { color: var(--text-primary); width: 56px; }
+    .move-black { color: var(--text-secondary); width: 56px; }
+
+    /* Utilities */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Voice Chess</h1>
+      <div class="header-status">
+        <div class="connection-status">
+          <span class="connection-dot" id="connection-dot"></span>
+          <span id="connection-text">Connecting...</span>
+        </div>
+        <button id="new-game-btn" class="hidden" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem;">New Game</button>
+      </div>
+    </header>
+
+    <!-- Setup Screen -->
+    <div id="setup-screen" class="setup-screen">
+      <div class="setup-card">
+        <h2>Start a Game</h2>
+
+        <div id="error-container"></div>
+
+        <div class="form-group">
+          <label>Ollama Model</label>
+          <select id="model-select">
+            <option value="">Loading models...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Voice</label>
+          <select id="voice-select">
+            <option value="">Loading voices...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Play as</label>
+          <div class="color-picker">
+            <button class="color-btn white selected" data-color="white">
+              <span class="piece">&#9812;</span>
+              White
+            </button>
+            <button class="color-btn black" data-color="black">
+              <span class="piece">&#9818;</span>
+              Black
+            </button>
+          </div>
+        </div>
+
+        <button id="start-btn" class="start-btn" disabled>Start Game</button>
+      </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="game-screen">
+      <div class="board-panel">
+        <div class="game-info">
+          <div id="turn-badge" class="turn-badge white">White to move</div>
+          <div id="status-text" class="status-text">Your turn</div>
+        </div>
+
+        <div class="board-wrapper">
+          <div id="board"></div>
+        </div>
+
+        <div class="board-controls">
+          <button id="undo-btn">Undo</button>
+          <button id="hint-btn">Hint</button>
+          <button id="analyze-btn">Analyze</button>
+        </div>
+      </div>
+
+      <div class="chat-panel">
+        <div class="chat-header">
+          <h3>Chat</h3>
+          <div class="voice-controls">
+            <button id="voice-toggle" class="active">Speaker</button>
+            <button id="stop-btn">Stop</button>
+          </div>
+        </div>
+
+        <div id="messages" class="messages"></div>
+
+        <div class="voice-input-area">
+          <button id="mic-btn" class="mic-button idle">
+            <span id="mic-icon">&#127908;</span>
+            <span id="mic-text">Click to Speak</span>
+          </button>
+          <div id="transcript" class="transcript"></div>
+        </div>
+
+        <div class="chat-input-area">
+          <input type="text" id="chat-input" placeholder="Or type here..." />
+          <button id="send-btn">Send</button>
+        </div>
+
+        <div class="move-history">
+          <h4>Moves</h4>
+          <div id="moves-list" class="moves-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script>
+    // ===========================================
+    // Voice Chess - Frontend Application
+    // ===========================================
+
+    const WS_URL = `ws://${window.location.host}/ws/default`;
+    const API_URL = window.location.origin;
+
+    // State
+    let ws = null;
+    let board = null;
+    let playerColor = 'white';
+    let selectedModel = '';
+    let isThinking = false;
+
+    // Voice
+    let recognition = null;
+    let synth = window.speechSynthesis;
+    let selectedVoice = null;
+    let voiceEnabled = true;
+    let isListening = false;
+    let isSpeaking = false;
+
+    // Current game state from server
+    let gameState = null;
+
+    // ===========================================
+    // Initialization
+    // ===========================================
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadModels();
+      loadVoices();
+      setupEventListeners();
+      setupSpeechRecognition();
+      connectWebSocket();
+    });
+
+    async function loadModels() {
+      try {
+        const response = await fetch(`${API_URL}/api/models`);
+        const data = await response.json();
+        const select = document.getElementById('model-select');
+        select.innerHTML = '';
+
+        if (data.models && data.models.length > 0) {
+          // Prefer llama3.2 or similar
+          const preferred = ['llama3.2', 'llama3.1', 'llama3', 'mistral'];
+          data.models.sort((a, b) => {
+            const aIdx = preferred.findIndex(p => a.toLowerCase().includes(p));
+            const bIdx = preferred.findIndex(p => b.toLowerCase().includes(p));
+            if (aIdx >= 0 && bIdx < 0) return -1;
+            if (bIdx >= 0 && aIdx < 0) return 1;
+            return 0;
+          });
+
+          data.models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            select.appendChild(option);
+          });
+
+          selectedModel = data.models[0];
+          document.getElementById('start-btn').disabled = false;
+        } else {
+          select.innerHTML = '<option value="">No models found</option>';
+          showError('No Ollama models found. Run: ollama pull llama3.2');
+        }
+      } catch (err) {
+        document.getElementById('model-select').innerHTML = '<option value="">Connection failed</option>';
+        showError('Cannot connect to server. Is it running?');
+      }
+    }
+
+    function loadVoices() {
+      const load = () => {
+        const voices = synth.getVoices();
+        const select = document.getElementById('voice-select');
+        select.innerHTML = '';
+
+        const english = voices.filter(v => v.lang.startsWith('en'));
+        const toShow = english.length > 0 ? english : voices;
+
+        toShow.forEach((voice, i) => {
+          const option = document.createElement('option');
+          option.value = i;
+          option.textContent = `${voice.name} (${voice.lang})`;
+          select.appendChild(option);
+        });
+
+        // Prefer natural voices
+        const preferred = toShow.findIndex(v =>
+          v.name.includes('Samantha') ||
+          v.name.includes('Daniel') ||
+          v.name.includes('Karen') ||
+          v.name.includes('Google UK')
+        );
+
+        if (preferred >= 0) {
+          select.selectedIndex = preferred;
+          selectedVoice = toShow[preferred];
+        } else {
+          selectedVoice = toShow[0];
+        }
+      };
+
+      load();
+      synth.onvoiceschanged = load;
+    }
+
+    function setupSpeechRecognition() {
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SR();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+          const transcript = Array.from(event.results)
+            .map(r => r[0].transcript)
+            .join('');
+
+          document.getElementById('transcript').textContent = transcript;
+
+          if (event.results[event.results.length - 1].isFinal) {
+            sendChat(transcript);
+            setTimeout(() => {
+              document.getElementById('transcript').textContent = '';
+            }, 1000);
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.error('Speech error:', event.error);
+          stopListening();
+          if (event.error === 'not-allowed') {
+            addMessage('system', 'Microphone access denied. Please allow and reload.');
+          }
+        };
+
+        recognition.onend = () => stopListening();
+      }
+    }
+
+    // ===========================================
+    // WebSocket
+    // ===========================================
+
+    function connectWebSocket() {
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        document.getElementById('connection-dot').classList.add('connected');
+        document.getElementById('connection-text').textContent = 'Connected';
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        document.getElementById('connection-dot').classList.remove('connected');
+        document.getElementById('connection-text').textContent = 'Disconnected';
+
+        // Reconnect after delay
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleServerMessage(data);
+      };
+    }
+
+    function handleServerMessage(data) {
+      console.log('Server message:', data.type, data);
+
+      switch (data.type) {
+        case 'game_state':
+          gameState = data.state;
+          updateBoard();
+          updateGameInfo();
+          break;
+
+        case 'move_result':
+          if (data.result.success) {
+            gameState = data.result.state;
+            updateBoard();
+            updateGameInfo();
+          } else {
+            addMessage('system', data.result.error);
+          }
+          break;
+
+        case 'ai_thinking':
+          isThinking = data.thinking;
+          updateStatus();
+          if (data.thinking) {
+            showThinking();
+          } else {
+            hideThinking();
+          }
+          break;
+
+        case 'ai_response':
+          hideThinking();
+          if (data.state) {
+            gameState = data.state;
+            updateBoard();
+            updateGameInfo();
+          }
+          addMessage('assistant', data.message, data.move);
+          speak(data.message);
+          break;
+
+        case 'undo_result':
+          if (data.result.success) {
+            gameState = data.result.state;
+            updateBoard();
+            updateGameInfo();
+          }
+          break;
+
+        case 'error':
+          addMessage('system', data.message);
+          break;
+      }
+    }
+
+    function send(data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(data));
+      }
+    }
+
+    // ===========================================
+    // Event Listeners
+    // ===========================================
+
+    function setupEventListeners() {
+      // Color selection
+      document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          playerColor = btn.dataset.color;
+        });
+      });
+
+      // Model selection
+      document.getElementById('model-select').addEventListener('change', (e) => {
+        selectedModel = e.target.value;
+      });
+
+      // Voice selection
+      document.getElementById('voice-select').addEventListener('change', (e) => {
+        const voices = synth.getVoices();
+        const english = voices.filter(v => v.lang.startsWith('en'));
+        const toUse = english.length > 0 ? english : voices;
+        selectedVoice = toUse[e.target.selectedIndex];
+      });
+
+      // Start game
+      document.getElementById('start-btn').addEventListener('click', startGame);
+
+      // Mic button
+      document.getElementById('mic-btn').addEventListener('click', toggleListening);
+
+      // Voice toggle
+      document.getElementById('voice-toggle').addEventListener('click', (e) => {
+        voiceEnabled = !voiceEnabled;
+        e.target.classList.toggle('active', voiceEnabled);
+      });
+
+      // Stop speaking
+      document.getElementById('stop-btn').addEventListener('click', stopSpeaking);
+
+      // Chat input
+      document.getElementById('send-btn').addEventListener('click', () => {
+        const input = document.getElementById('chat-input');
+        if (input.value.trim()) {
+          sendChat(input.value.trim());
+          input.value = '';
+        }
+      });
+
+      document.getElementById('chat-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const input = e.target;
+          if (input.value.trim()) {
+            sendChat(input.value.trim());
+            input.value = '';
+          }
+        }
+      });
+
+      // Board controls
+      document.getElementById('undo-btn').addEventListener('click', () => {
+        send({ type: 'undo' });
+      });
+
+      document.getElementById('hint-btn').addEventListener('click', () => {
+        sendChat("Can you give me a hint?");
+      });
+
+      document.getElementById('analyze-btn').addEventListener('click', () => {
+        sendChat("Can you analyze the current position?");
+      });
+
+      // New game button
+      document.getElementById('new-game-btn').addEventListener('click', () => {
+        stopSpeaking();
+        document.getElementById('setup-screen').style.display = 'flex';
+        document.getElementById('game-screen').classList.remove('active');
+        document.getElementById('new-game-btn').classList.add('hidden');
+      });
+    }
+
+    // ===========================================
+    // Game Functions
+    // ===========================================
+
+    function startGame() {
+      document.getElementById('setup-screen').style.display = 'none';
+      document.getElementById('game-screen').classList.add('active');
+      document.getElementById('new-game-btn').classList.remove('hidden');
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('moves-list').innerHTML = '';
+
+      // Initialize board
+      const config = {
+        draggable: true,
+        position: 'start',
+        orientation: playerColor,
+        onDragStart: onDragStart,
+        onDrop: onDrop,
+        onSnapEnd: onSnapEnd,
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+      };
+
+      board = Chessboard('board', config);
+      $(window).resize(() => board.resize());
+
+      // Start game on server
+      send({
+        type: 'new_game',
+        player_color: playerColor,
+        model: selectedModel
+      });
+    }
+
+    function onDragStart(source, piece) {
+      if (!gameState) return false;
+      if (gameState.is_game_over) return false;
+      if (isThinking) return false;
+
+      // Check if it's player's turn
+      const isWhitePiece = piece.search(/^w/) !== -1;
+      const isPlayerTurn = gameState.turn === playerColor;
+
+      if (!isPlayerTurn) return false;
+      if (playerColor === 'white' && !isWhitePiece) return false;
+      if (playerColor === 'black' && isWhitePiece) return false;
+
+      return true;
+    }
+
+    function onDrop(source, target) {
+      // Try to make move via chat (server will validate)
+      const move = source + target;
+      send({ type: 'chat', message: move });
+      return 'snapback'; // Let server update position
+    }
+
+    function onSnapEnd() {
+      if (gameState) {
+        board.position(gameState.fen);
+      }
+    }
+
+    function updateBoard() {
+      if (board && gameState) {
+        board.position(gameState.fen);
+        updateMovesList();
+      }
+    }
+
+    function updateGameInfo() {
+      if (!gameState) return;
+
+      const turnBadge = document.getElementById('turn-badge');
+      turnBadge.textContent = `${gameState.turn === 'white' ? 'White' : 'Black'} to move`;
+      turnBadge.className = `turn-badge ${gameState.turn}`;
+
+      updateStatus();
+    }
+
+    function updateStatus() {
+      const statusEl = document.getElementById('status-text');
+
+      if (!gameState) {
+        statusEl.textContent = '';
+        statusEl.className = 'status-text';
+        return;
+      }
+
+      if (gameState.is_checkmate) {
+        const winner = gameState.turn === 'white' ? 'Black' : 'White';
+        statusEl.textContent = `Checkmate! ${winner} wins!`;
+        statusEl.className = 'status-text game-over';
+      } else if (gameState.is_stalemate) {
+        statusEl.textContent = 'Stalemate - Draw';
+        statusEl.className = 'status-text game-over';
+      } else if (gameState.is_game_over) {
+        statusEl.textContent = 'Game Over - Draw';
+        statusEl.className = 'status-text game-over';
+      } else if (gameState.is_check) {
+        statusEl.textContent = 'Check!';
+        statusEl.className = 'status-text check';
+      } else if (isThinking) {
+        statusEl.textContent = 'Thinking...';
+        statusEl.className = 'status-text thinking';
+      } else {
+        const isPlayerTurn = gameState.turn === playerColor;
+        statusEl.textContent = isPlayerTurn ? 'Your turn' : "Opponent's turn";
+        statusEl.className = 'status-text';
+      }
+    }
+
+    function updateMovesList() {
+      if (!gameState) return;
+
+      const container = document.getElementById('moves-list');
+      container.innerHTML = '';
+
+      const moves = gameState.moves || [];
+      for (let i = 0; i < moves.length; i += 2) {
+        const div = document.createElement('div');
+        div.className = 'move-pair';
+        div.innerHTML = `
+          <span class="move-num">${Math.floor(i/2) + 1}.</span>
+          <span class="move-white">${moves[i] || ''}</span>
+          <span class="move-black">${moves[i + 1] || ''}</span>
+        `;
+        container.appendChild(div);
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // ===========================================
+    // Chat & Messages
+    // ===========================================
+
+    function sendChat(message) {
+      if (!message.trim() || isThinking) return;
+
+      stopListening();
+      addMessage('user', message);
+      send({ type: 'chat', message: message });
+    }
+
+    function addMessage(role, content, move = null) {
+      const container = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+
+      if (role === 'assistant') {
+        div.innerHTML = `
+          <div class="message-header">
+            AI ${move ? `<span class="move-badge">${move}</span>` : ''}
+          </div>
+          ${content}
+        `;
+      } else {
+        div.textContent = content;
+      }
+
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function showThinking() {
+      const container = document.getElementById('messages');
+      let indicator = document.getElementById('thinking-indicator');
+
+      if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'thinking-indicator';
+        indicator.className = 'thinking-indicator';
+        indicator.innerHTML = `
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+          <span>Thinking...</span>
+        `;
+        container.appendChild(indicator);
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function hideThinking() {
+      const indicator = document.getElementById('thinking-indicator');
+      if (indicator) indicator.remove();
+    }
+
+    // ===========================================
+    // Voice
+    // ===========================================
+
+    function toggleListening() {
+      if (isListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
+    }
+
+    function startListening() {
+      if (!recognition || isThinking || isSpeaking) return;
+
+      stopSpeaking();
+      recognition.start();
+      isListening = true;
+
+      const btn = document.getElementById('mic-btn');
+      btn.className = 'mic-button listening';
+      document.getElementById('mic-icon').innerHTML = '&#128308;';
+      document.getElementById('mic-text').textContent = 'Listening...';
+    }
+
+    function stopListening() {
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+      isListening = false;
+
+      const btn = document.getElementById('mic-btn');
+      btn.className = 'mic-button idle';
+      document.getElementById('mic-icon').innerHTML = '&#127908;';
+      document.getElementById('mic-text').textContent = 'Click to Speak';
+    }
+
+    function speak(text) {
+      if (!voiceEnabled || !selectedVoice) return;
+
+      synth.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.voice = selectedVoice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      utterance.onstart = () => {
+        isSpeaking = true;
+        const btn = document.getElementById('mic-btn');
+        btn.className = 'mic-button speaking';
+        document.getElementById('mic-icon').innerHTML = '&#128266;';
+        document.getElementById('mic-text').textContent = 'Speaking...';
+      };
+
+      utterance.onend = () => {
+        isSpeaking = false;
+        const btn = document.getElementById('mic-btn');
+        btn.className = 'mic-button idle';
+        document.getElementById('mic-icon').innerHTML = '&#127908;';
+        document.getElementById('mic-text').textContent = 'Click to Speak';
+      };
+
+      utterance.onerror = () => {
+        isSpeaking = false;
+      };
+
+      synth.speak(utterance);
+    }
+
+    function stopSpeaking() {
+      synth.cancel();
+      isSpeaking = false;
+      if (!isListening) {
+        const btn = document.getElementById('mic-btn');
+        btn.className = 'mic-button idle';
+        document.getElementById('mic-icon').innerHTML = '&#127908;';
+        document.getElementById('mic-text').textContent = 'Click to Speak';
+      }
+    }
+
+    // ===========================================
+    // Utilities
+    // ===========================================
+
+    function showError(msg) {
+      const container = document.getElementById('error-container');
+      container.innerHTML = `<div class="error-msg">${msg}</div>`;
+    }
+  </script>
+</body>
+</html>
