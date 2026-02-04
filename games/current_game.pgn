@@ -1,9 +1,0 @@
-[Event "Voice Chess vs Ollama"]
-[Site "?"]
-[Date "2026.02.04"]
-[Round "?"]
-[White "Human"]
-[Black "Ollama"]
-[Result "1-0"]
-
-1. e4 Nf6 2. e5 Nc6 3. exf6 gxf6 4. Nc3 e6 5. d3 Bg7 6. Qf3 O-O 7. Qh5 h6 8. d4 e5 9. Bd3 d5 10. Nxd5 Qe7 11. dxe5 Kh8 12. Nxe7 Rd8 13. Nxc8 Kg8 14. Bxh6 Kf8 15. Bxg7+ Kxg7 16. exf6+ Kg8 17. Qh7+ Kf8 18. Qh8# 1-0
