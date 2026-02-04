@@ -1279,7 +1279,7 @@ async def handle_game_over(websocket: WebSocket, game: ChessGame):
     })
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True):
+def run_server(host: str = "127.0.0.1", port: int = 8766, open_browser: bool = True):
     """Run the FastAPI server."""
     import uvicorn
 

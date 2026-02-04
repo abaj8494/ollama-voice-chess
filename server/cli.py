@@ -36,8 +36,8 @@ Requirements:
     parser.add_argument(
         "--port", "-p",
         type=int,
-        default=8765,
-        help="Port to run server on (default: 8765)"
+        default=8766,
+        help="Port to run server on (default: 8766)"
     )
 
     parser.add_argument(

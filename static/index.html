@@ -1911,6 +1911,8 @@
       }, 1000);
     }
 
+    let dragStartedAt = null;  // Track when drag started to detect actual drags vs clicks
+
     function onDragStart(source, piece) {
       if (!gameState) return false;
       if (gameState.is_game_over) return false;
@@ -1922,12 +1924,13 @@
 
       if (!isOwnPiece) return false;
 
-      // Allow dragging for pre-moves even when not player's turn
+      // Record drag start time to distinguish clicks from drags
+      dragStartedAt = Date.now();
+
+      // DON'T clear selection here - let the click handler manage selection
+      // Only clear pre-move selection since we're starting a new interaction
       const isPlayerTurn = gameState.turn === playerColor;
       const isPreMoveMode = isThinking || !isPlayerTurn;
-
-      // Clear any click-to-move selection when dragging starts
-      clearSelection();
       if (isPreMoveMode) {
         clearPreMoveSelection();
       }
@@ -1936,14 +1939,18 @@
     }
 
     function onDrop(source, target) {
-      // Clear any click-to-move selection
-      clearSelection();
+      const dragDuration = dragStartedAt ? Date.now() - dragStartedAt : 0;
+      const wasActualDrag = dragDuration > 150 || source !== target;  // >150ms or moved to different square
 
-      // If dropped on same square, treat as a selection click
-      if (source === target) {
-        // Let the click handler deal with selection
+      console.log('[DROP] source:', source, 'target:', target, 'dragDuration:', dragDuration, 'wasActualDrag:', wasActualDrag);
+
+      // If dropped on same square quickly, it's a click - let click handler deal with it
+      if (source === target && dragDuration < 150) {
         return 'snapback';
       }
+
+      // This was an actual drag - clear click-to-move selection
+      clearSelection();
 
       const isPlayerTurn = gameState && gameState.turn === playerColor;
       const isPreMoveMode = isThinking || !isPlayerTurn;
