@@ -321,6 +321,28 @@ async def handle_chat(websocket: WebSocket, game: ChessGame, message: str):
                 await handle_ai_turn(websocket, game, f"I played {result['move']}.")
             return
 
+    # Check for ambiguous move requests and help the player
+    ambiguous_patterns = [
+        "move the", "move a", "push the", "push a", "advance",
+        "forward", "go forward", "move forward"
+    ]
+    if any(p in message_lower for p in ambiguous_patterns):
+        legal = game.get_legal_moves()
+        # Try to identify what they meant
+        pawn_moves = [m for m in legal if len(m) == 2 and m[0] in 'abcdefgh']
+
+        response = "I'm not sure which piece you want to move. "
+        if pawn_moves:
+            response += f"Your pawn moves are: {', '.join(pawn_moves[:8])}. "
+        response += "Try saying something like 'e4' or 'knight to f3'."
+
+        await websocket.send_json({
+            "type": "ai_response",
+            "message": response,
+            "move": None
+        })
+        return
+
     # Not a move - send to AI for conversation
     await handle_ai_turn(websocket, game, message)
 
