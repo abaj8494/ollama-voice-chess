@@ -365,6 +365,34 @@
       background-color: rgba(234, 179, 8, 0.4) !important;
     }
 
+    /* Pre-move highlights (orange/amber for queued moves) */
+    .highlight-premove-from {
+      box-shadow: inset 0 0 0 4px var(--accent-yellow) !important;
+      background-color: rgba(234, 179, 8, 0.3) !important;
+    }
+
+    .highlight-premove-to {
+      background-color: rgba(234, 179, 8, 0.5) !important;
+    }
+
+    .highlight-premove-pending {
+      box-shadow: inset 0 0 0 4px rgba(234, 179, 8, 0.7) !important;
+    }
+
+    /* Pre-move queue indicator */
+    .premove-badge {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      background: var(--accent-yellow);
+      color: #1e293b;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 4px;
+      z-index: 100;
+    }
+
     .messages {
       flex: 1;
       min-height: 0; /* Important for flex overflow */
@@ -1247,6 +1275,11 @@
     let selectedSquare = null;
     let legalMovesForSelected = [];
 
+    // Pre-move state
+    const MAX_PREMOVES = 20;
+    let preMoveQueue = [];  // Array of { from: 'e2', to: 'e4' }
+    let preMovePendingSquare = null;  // Square selected for pre-move
+
     // Last AI move for replay
     let lastAIMove = null;  // { from: 'e2', to: 'e4', piece: 'wP' }
 
@@ -1560,6 +1593,7 @@
       switch (data.type) {
         case 'game_state':
           gameState = data.state;
+          clearAllPreMoves();  // Clear pre-moves on new/loaded game
           updateBoard();
           updateGameInfo();
           break;
@@ -1607,11 +1641,18 @@
             addMessage('system', data.blunder_feedback);
           }
           speak(data.message);
+
+          // Execute queued pre-moves if it's now player's turn
+          if (preMoveQueue.length > 0 && gameState && gameState.turn === playerColor && !gameState.is_game_over) {
+            // Small delay to let the board update visually
+            setTimeout(() => executePreMoves(), 100);
+          }
           break;
 
         case 'undo_result':
           if (data.result.success) {
             gameState = data.result.state;
+            clearAllPreMoves();  // Clear pre-moves on undo
             updateBoard();
             updateGameInfo();
           }
@@ -1624,7 +1665,8 @@
             updateBoard();
             updateGameInfo();
           }
-          // Pause listening and show modal
+          // Clear pre-moves and pause listening
+          clearAllPreMoves();
           pauseListening();
           showGameOverModal(data);
           break;
@@ -1846,8 +1888,9 @@
       board = Chessboard('board', config);
       $(window).resize(() => board.resize());
 
-      // Add click-to-move handlers
+      // Add click-to-move and pre-move handlers
       setupClickToMove();
+      setupPreMoveClearHandler();
 
       // Start game on server
       send({
@@ -1871,18 +1914,23 @@
     function onDragStart(source, piece) {
       if (!gameState) return false;
       if (gameState.is_game_over) return false;
-      if (isThinking) return false;
 
-      // Check if it's player's turn
+      // Check if it's player's piece
       const isWhitePiece = piece.search(/^w/) !== -1;
-      const isPlayerTurn = gameState.turn === playerColor;
+      const isOwnPiece = (playerColor === 'white' && isWhitePiece) ||
+                         (playerColor === 'black' && !isWhitePiece);
 
-      if (!isPlayerTurn) return false;
-      if (playerColor === 'white' && !isWhitePiece) return false;
-      if (playerColor === 'black' && isWhitePiece) return false;
+      if (!isOwnPiece) return false;
+
+      // Allow dragging for pre-moves even when not player's turn
+      const isPlayerTurn = gameState.turn === playerColor;
+      const isPreMoveMode = isThinking || !isPlayerTurn;
 
       // Clear any click-to-move selection when dragging starts
       clearSelection();
+      if (isPreMoveMode) {
+        clearPreMoveSelection();
+      }
 
       return true;
     }
@@ -1897,6 +1945,24 @@
         return 'snapback';
       }
 
+      const isPlayerTurn = gameState && gameState.turn === playerColor;
+      const isPreMoveMode = isThinking || !isPlayerTurn;
+
+      // === PRE-MOVE MODE (via drag) ===
+      if (isPreMoveMode) {
+        if (preMoveQueue.length < MAX_PREMOVES) {
+          const preMove = { from: source, to: target };
+          preMoveQueue.push(preMove);
+          console.log('[PREMOVE] Queued pre-move via drag:', preMove, 'Queue length:', preMoveQueue.length);
+          renderPreMoves();
+          addMessage('system', `Pre-move queued: ${source} → ${target} (${preMoveQueue.length} in queue)`);
+        } else {
+          addMessage('system', `Max pre-moves reached (${MAX_PREMOVES}). Clear some first.`);
+        }
+        return 'snapback';  // Always snap back for pre-moves
+      }
+
+      // === NORMAL MOVE MODE ===
       // Check if this move is in the legal moves list
       const uciMove = source + target;
       const isLegal = gameState && gameState.legal_moves &&
@@ -2295,22 +2361,23 @@
         console.log('[CLICK] Game over, returning');
         return;
       }
-      if (isThinking) {
-        console.log('[CLICK] AI thinking, returning');
-        return;
-      }
-
-      const isPlayerTurn = gameState.turn === playerColor;
-      if (!isPlayerTurn) {
-        console.log('[CLICK] Not player turn, returning');
-        return;
-      }
 
       const position = board.position();
       const piece = position[square];
+      const isPlayerTurn = gameState.turn === playerColor;
 
-      console.log('[CLICK] Processing:', square, 'selected:', selectedSquare, 'piece:', piece, 'legalTargets:', legalMovesForSelected);
+      // Check if we're in pre-move mode (AI is thinking or not our turn)
+      const isPreMoveMode = isThinking || !isPlayerTurn;
 
+      console.log('[CLICK] Processing:', square, 'selected:', selectedSquare, 'piece:', piece,
+                  'isPreMoveMode:', isPreMoveMode, 'pendingPreMove:', preMovePendingSquare);
+
+      // === PRE-MOVE MODE ===
+      if (isPreMoveMode) {
+        return handlePreMoveClick(square, piece, position);
+      }
+
+      // === NORMAL MOVE MODE ===
       // If we have a selected piece and clicked a different square
       if (selectedSquare && square !== selectedSquare) {
         console.log('[CLICK] Have selection, checking if', square, 'is legal target');
@@ -2357,6 +2424,136 @@
       clearSelection();
     }
 
+    function handlePreMoveClick(square, piece, position) {
+      console.log('[PREMOVE] Handling pre-move click:', square, 'pending:', preMovePendingSquare);
+
+      // If we already have a pending pre-move square selected
+      if (preMovePendingSquare) {
+        // If clicking the same square, deselect
+        if (square === preMovePendingSquare) {
+          clearPreMoveSelection();
+          return;
+        }
+
+        // Check if clicking on own piece - switch selection
+        if (piece) {
+          const isOwnPiece = (playerColor === 'white' && piece[0] === 'w') ||
+                            (playerColor === 'black' && piece[0] === 'b');
+          if (isOwnPiece) {
+            selectPreMoveSquare(square);
+            return;
+          }
+        }
+
+        // Otherwise, queue this as a pre-move (from pending to clicked square)
+        if (preMoveQueue.length < MAX_PREMOVES) {
+          const preMove = { from: preMovePendingSquare, to: square };
+          preMoveQueue.push(preMove);
+          console.log('[PREMOVE] Queued pre-move:', preMove, 'Queue length:', preMoveQueue.length);
+
+          clearPreMoveSelection();
+          renderPreMoves();
+
+          // Show feedback
+          addMessage('system', `Pre-move queued: ${preMove.from} → ${preMove.to} (${preMoveQueue.length} in queue)`);
+        } else {
+          addMessage('system', `Max pre-moves reached (${MAX_PREMOVES}). Clear some first.`);
+        }
+        return;
+      }
+
+      // No pending selection - check if clicking on own piece to start pre-move
+      if (piece) {
+        const isOwnPiece = (playerColor === 'white' && piece[0] === 'w') ||
+                          (playerColor === 'black' && piece[0] === 'b');
+        if (isOwnPiece) {
+          selectPreMoveSquare(square);
+          return;
+        }
+      }
+
+      // Clicked on empty square or opponent piece with no selection
+      clearPreMoveSelection();
+    }
+
+    function selectPreMoveSquare(square) {
+      console.log('[PREMOVE] Selecting square for pre-move:', square);
+      clearPreMoveSelection();
+      preMovePendingSquare = square;
+
+      // Highlight the selected square
+      $('[data-square="' + square + '"]').addClass('highlight-premove-pending');
+    }
+
+    function clearPreMoveSelection() {
+      preMovePendingSquare = null;
+      $('[data-square]').removeClass('highlight-premove-pending');
+    }
+
+    function renderPreMoves() {
+      // Clear existing pre-move highlights
+      $('[data-square]').removeClass('highlight-premove-from highlight-premove-to');
+      $('.premove-badge').remove();
+
+      // Highlight all queued pre-moves
+      preMoveQueue.forEach((preMove, index) => {
+        const fromEl = $('[data-square="' + preMove.from + '"]');
+        const toEl = $('[data-square="' + preMove.to + '"]');
+
+        fromEl.addClass('highlight-premove-from');
+        toEl.addClass('highlight-premove-to');
+
+        // Add badge with move number
+        if (!fromEl.find('.premove-badge').length) {
+          fromEl.css('position', 'relative').append(
+            `<span class="premove-badge">${index + 1}</span>`
+          );
+        }
+      });
+    }
+
+    function clearAllPreMoves() {
+      preMoveQueue = [];
+      clearPreMoveSelection();
+      $('[data-square]').removeClass('highlight-premove-from highlight-premove-to highlight-premove-pending');
+      $('.premove-badge').remove();
+      console.log('[PREMOVE] Cleared all pre-moves');
+    }
+
+    async function executePreMoves() {
+      console.log('[PREMOVE] Executing pre-moves. Queue:', preMoveQueue.length);
+
+      while (preMoveQueue.length > 0 && gameState && !gameState.is_game_over) {
+        const preMove = preMoveQueue[0];
+        const uciMove = preMove.from + preMove.to;
+
+        // Check if this pre-move is legal in current position
+        if (gameState.legal_moves && gameState.legal_moves.some(m => m.startsWith(uciMove))) {
+          console.log('[PREMOVE] Executing legal pre-move:', uciMove);
+          preMoveQueue.shift();  // Remove from queue
+          renderPreMoves();  // Update visuals
+
+          // Send the move
+          send({ type: 'move', move: uciMove });
+
+          // Wait a bit for the server to process and AI to respond
+          // The next pre-move will be executed after AI responds
+          return;
+        } else {
+          // Pre-move is no longer legal - remove it and try next
+          console.log('[PREMOVE] Pre-move no longer legal:', uciMove, 'removing');
+          preMoveQueue.shift();
+          addMessage('system', `Pre-move ${preMove.from} → ${preMove.to} was not legal, skipped`);
+          renderPreMoves();
+        }
+      }
+
+      // Clear any remaining visual state
+      if (preMoveQueue.length === 0) {
+        clearAllPreMoves();
+      }
+    }
+
     function selectSquare(square) {
       console.log('[SELECT] Selecting square:', square);
       clearSelection();
@@ -2391,6 +2588,18 @@
       selectedSquare = null;
       legalMovesForSelected = [];
       $('[data-square]').removeClass('highlight-selected highlight-legal highlight-capture highlight-last-move');
+    }
+
+    // Right-click to clear all pre-moves
+    function setupPreMoveClearHandler() {
+      const boardEl = document.getElementById('board');
+      boardEl.addEventListener('contextmenu', function(e) {
+        if (preMoveQueue.length > 0 || preMovePendingSquare) {
+          e.preventDefault();
+          clearAllPreMoves();
+          addMessage('system', 'Pre-moves cleared');
+        }
+      });
     }
 
     // ===========================================
@@ -2816,8 +3025,9 @@
         board = Chessboard('board', config);
         $(window).resize(() => board.resize());
 
-        // Add click-to-move handlers
+        // Add click-to-move and pre-move handlers
         setupClickToMove();
+        setupPreMoveClearHandler();
 
         // Update game state
         gameState = data.state;
