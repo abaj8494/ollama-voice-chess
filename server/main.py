@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from .game import ChessGame
 from .ollama_client import OllamaClient
+from .engine import ChessEngine, get_engine
 
 # Configure logging
 logging.basicConfig(
@@ -56,20 +57,28 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     global ollama_client
 
-    # Startup
+    # Startup - Initialize Stockfish engine
+    engine = get_engine()
+    if engine.is_running():
+        logger.info(f"Stockfish engine ready (skill level: {engine.skill_level})")
+    else:
+        logger.warning("Stockfish not available - install with: brew install stockfish")
+
+    # Initialize Ollama for commentary
     model = os.environ.get("CHESS_MODEL", "qwen2.5:14b")
     ollama_client = OllamaClient(model=model)
 
     if await ollama_client.check_connection():
-        logger.info(f"Connected to Ollama with model: {model}")
+        logger.info(f"Ollama connected (model: {model}) - for move explanations")
     else:
-        logger.warning("Ollama not running - AI features will fail")
+        logger.warning("Ollama not running - AI commentary disabled")
 
     yield
 
     # Shutdown
     if ollama_client:
         await ollama_client.close()
+    engine.stop()
 
 
 app = FastAPI(
@@ -442,95 +451,83 @@ def try_parse_player_move(text: str, game: ChessGame) -> Optional[str]:
 
 
 async def handle_ai_turn(websocket: WebSocket, game: ChessGame, player_message: str):
-    """Handle AI's turn - get response from Ollama and make move if needed."""
-    if not ollama_client:
-        await websocket.send_json({
-            "type": "error",
-            "message": "AI not available - Ollama not connected"
-        })
-        return
+    """
+    Handle AI's turn using Stockfish for moves, Ollama for commentary.
 
+    Architecture:
+    - Stockfish: Generates strong, tactically sound moves
+    - Ollama: Explains the move and handles conversation
+    """
     # Send thinking indicator
     await websocket.send_json({
         "type": "ai_thinking",
         "thinking": True
     })
 
-    # Build game context
-    game_context = f"""You are playing as {'Black' if game.state.player_color == 'white' else 'White'}.
-The human is playing {game.state.player_color.title()}.
-{game.get_formatted_history()}
-{game.get_position_description()}"""
-
     is_ai_turn = game.is_ai_turn()
-    legal_moves = game.get_legal_moves()
+    logger.info(f"[PLAYER] {player_message}")
 
     try:
-        # Get AI response
-        response = await ollama_client.chat(
-            user_message=player_message,
-            game_context=game_context,
-            conversation_history=game.get_conversation_history(),
-            is_ai_turn=is_ai_turn,
-            legal_moves=legal_moves
-        )
+        ai_move = None
+        engine_analysis = None
 
-        # Log the full AI thinking to server console
-        logger.info(f"[PLAYER] {player_message}")
-        logger.info(f"[AI THINKING] {response}")
+        # If it's AI's turn, use Stockfish for the move
+        if is_ai_turn:
+            engine = get_engine()
+
+            if engine.is_running():
+                # Get Stockfish's best move
+                result = engine.get_best_move(game.state.board)
+
+                if result:
+                    move, analysis = result
+                    engine_analysis = analysis
+
+                    # Log engine thinking
+                    logger.info(f"[STOCKFISH] Best: {analysis['move']}, Eval: {analysis['score']}, "
+                               f"Depth: {analysis['depth']}, Line: {' '.join(analysis['pv'])}")
+
+                    # Make the move
+                    move_result = game.make_move(analysis['move'])
+                    if move_result["success"]:
+                        ai_move = move_result["move"]
+                        logger.info(f"[ENGINE MOVE] {ai_move}")
+                        save_game_pgn(game, "current_game.pgn")
+            else:
+                # Fallback: pick a reasonable move without engine
+                legal_moves = game.get_legal_moves()
+                if legal_moves:
+                    priority = ['e5', 'd5', 'Nf6', 'Nc6', 'e6', 'd6', 'Bc5', 'Be7', 'O-O', 'c5']
+                    fallback = next((m for m in priority if m in legal_moves), legal_moves[0])
+                    move_result = game.make_move(fallback)
+                    if move_result["success"]:
+                        ai_move = move_result["move"]
+                        logger.info(f"[FALLBACK MOVE] {ai_move}")
+                        save_game_pgn(game, "current_game.pgn")
+
+        # Generate natural language response using Ollama
+        response = await generate_move_commentary(
+            game, player_message, ai_move, engine_analysis, is_ai_turn
+        )
 
         # Store in conversation history
         game.add_conversation("user", player_message)
         game.add_conversation("assistant", response)
 
-        # Extract move if AI should be moving
-        ai_move = None
-        if is_ai_turn:
-            extracted = OllamaClient.extract_move(response)
-            if extracted:
-                move_result = game.make_move(extracted)
-                if move_result["success"]:
-                    ai_move = move_result["move"]
-                    logger.info(f"[AI MOVE] {ai_move}")
-                    # Auto-save game after each move
-                    save_game_pgn(game, "current_game.pgn")
-                else:
-                    logger.warning(f"[AI INVALID] Suggested: {extracted}")
-                    # Try to pick a sensible legal move as fallback
-                    if legal_moves:
-                        # Prefer central/developing moves
-                        priority = ['e5', 'd5', 'Nf6', 'Nc6', 'e6', 'd6', 'Bc5', 'Be7', 'O-O']
-                        fallback = next((m for m in priority if m in legal_moves), legal_moves[0])
-                        fallback_result = game.make_move(fallback)
-                        if fallback_result["success"]:
-                            ai_move = fallback_result["move"]
-                            logger.info(f"[AI FALLBACK] {ai_move}")
-                            save_game_pgn(game, "current_game.pgn")
-
-        # Clean response for speech (remove **Move: xxx** markers)
-        import re
-        clean_response = response
-        clean_response = re.sub(r'\*\*Move:\s*[^*]+\*\*', '', clean_response)
-        clean_response = re.sub(r'\*\*', '', clean_response)
-        clean_response = clean_response.strip()
-
-        # If response is empty after cleaning, provide a simple one
-        if not clean_response and ai_move:
-            clean_response = f"{ai_move}."
-
         await websocket.send_json({
             "type": "ai_response",
-            "message": clean_response,
+            "message": response,
             "move": ai_move,
             "state": game.state.to_dict()
         })
 
-        # Check for game over and save final PGN
+        # Check for game over
         if game.state.board.is_game_over():
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             save_game_pgn(game, f"game_{timestamp}_final.pgn")
-            logger.info(f"[GAME OVER] {game.state.get_result()}")
+            result = game.state.get_result()
+            logger.info(f"[GAME OVER] {result}")
 
     except Exception as e:
         logger.error(f"AI turn error: {e}")
@@ -544,6 +541,90 @@ The human is playing {game.state.player_color.title()}.
             "type": "ai_thinking",
             "thinking": False
         })
+
+
+async def generate_move_commentary(
+    game: ChessGame,
+    player_message: str,
+    ai_move: Optional[str],
+    engine_analysis: Optional[dict],
+    is_ai_turn: bool
+) -> str:
+    """
+    Generate natural language commentary for a move or respond to questions.
+
+    Uses Ollama for conversational responses, but keeps them SHORT for speech.
+    """
+    # If no Ollama, just return the move
+    if not ollama_client:
+        if ai_move:
+            return f"{ai_move}."
+        return "Your turn."
+
+    # Check if this is a question (tutor mode) or just a move notification
+    is_question = any(word in player_message.lower() for word in
+                      ['why', 'what', 'how', 'explain', 'help', 'hint', '?'])
+
+    if is_question and not is_ai_turn:
+        # Tutor mode - give a detailed explanation
+        game_context = f"""Position: {game.get_formatted_history()}
+{game.get_position_description()}
+
+The player asked: "{player_message}"
+
+Give a helpful, educational response about chess strategy or the position."""
+
+        response = await ollama_client.chat(
+            user_message=player_message,
+            game_context=game_context,
+            conversation_history=game.get_conversation_history()[-4:],
+            is_ai_turn=False,
+            legal_moves=[]
+        )
+        logger.info(f"[TUTOR] {response}")
+        return response
+
+    elif ai_move:
+        # Just made a move - give a VERY brief comment
+        # Build context about what the move does
+        eval_info = ""
+        if engine_analysis:
+            score = engine_analysis.get('score', '0.0')
+            eval_info = f"Position evaluation: {score}"
+
+        context = f"""You just played {ai_move}.
+{eval_info}
+Say your move and add ONE short comment (max 8 words). Be natural, like talking to a friend.
+Examples: "{ai_move}." or "{ai_move}, developing my knight." or "I'll take that pawn."""
+
+        try:
+            response = await ollama_client.chat(
+                user_message=f"I played, now it's your turn. You play {ai_move}.",
+                game_context=context,
+                conversation_history=[],
+                is_ai_turn=False,  # We already made the move
+                legal_moves=[]
+            )
+
+            # Clean and shorten the response
+            import re
+            response = re.sub(r'\*\*[^*]+\*\*', '', response)
+            response = response.strip()
+
+            # If response is too long, just use the move
+            if len(response) > 80:
+                response = f"{ai_move}."
+
+            logger.info(f"[COMMENT] {response}")
+            return response
+
+        except Exception as e:
+            logger.error(f"Commentary error: {e}")
+            return f"{ai_move}."
+
+    else:
+        # No move, just conversation
+        return "Your turn."
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True):
