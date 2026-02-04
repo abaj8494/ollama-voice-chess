@@ -24,13 +24,31 @@ from .ollama_client import OllamaClient
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S"
 )
 logger = logging.getLogger(__name__)
 
 # Global state
 games: dict[str, ChessGame] = {}
 ollama_client: Optional[OllamaClient] = None
+
+# Games directory for PGN files
+GAMES_DIR = Path(__file__).parent.parent / "games"
+GAMES_DIR.mkdir(exist_ok=True)
+
+
+def save_game_pgn(game: ChessGame, filename: str = None) -> Path:
+    """Save game to PGN file."""
+    from datetime import datetime
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"game_{timestamp}.pgn"
+    filepath = GAMES_DIR / filename
+    pgn_content = game.get_pgn()
+    filepath.write_text(pgn_content)
+    logger.info(f"Game saved: {filepath}")
+    return filepath
 
 
 @asynccontextmanager
@@ -39,7 +57,7 @@ async def lifespan(app: FastAPI):
     global ollama_client
 
     # Startup
-    model = os.environ.get("CHESS_MODEL", "llama3.2")
+    model = os.environ.get("CHESS_MODEL", "qwen2.5:14b")
     ollama_client = OllamaClient(model=model)
 
     if await ollama_client.check_connection():
@@ -259,6 +277,11 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {game_id}")
+        # Save game on disconnect if there are moves
+        if game and game.state.board.move_stack:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_game_pgn(game, f"game_{timestamp}_session.pgn")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         try:
@@ -311,6 +334,9 @@ async def handle_chat(websocket: WebSocket, game: ChessGame, message: str):
     if move_result:
         result = game.make_move(move_result)
         if result["success"]:
+            logger.info(f"[PLAYER MOVE] {result['move']}")
+            save_game_pgn(game, "current_game.pgn")
+
             await websocket.send_json({
                 "type": "move_result",
                 "result": result
@@ -449,6 +475,10 @@ The human is playing {game.state.player_color.title()}.
             legal_moves=legal_moves
         )
 
+        # Log the full AI thinking to server console
+        logger.info(f"[PLAYER] {player_message}")
+        logger.info(f"[AI THINKING] {response}")
+
         # Store in conversation history
         game.add_conversation("user", player_message)
         game.add_conversation("assistant", response)
@@ -461,31 +491,46 @@ The human is playing {game.state.player_color.title()}.
                 move_result = game.make_move(extracted)
                 if move_result["success"]:
                     ai_move = move_result["move"]
-                    logger.info(f"AI played: {ai_move}")
+                    logger.info(f"[AI MOVE] {ai_move}")
+                    # Auto-save game after each move
+                    save_game_pgn(game, "current_game.pgn")
                 else:
-                    logger.warning(f"AI suggested invalid move: {extracted}")
-                    # Try to pick a random legal move as fallback
+                    logger.warning(f"[AI INVALID] Suggested: {extracted}")
+                    # Try to pick a sensible legal move as fallback
                     if legal_moves:
-                        fallback = legal_moves[0]
+                        # Prefer central/developing moves
+                        priority = ['e5', 'd5', 'Nf6', 'Nc6', 'e6', 'd6', 'Bc5', 'Be7', 'O-O']
+                        fallback = next((m for m in priority if m in legal_moves), legal_moves[0])
                         fallback_result = game.make_move(fallback)
                         if fallback_result["success"]:
                             ai_move = fallback_result["move"]
-                            response += f"\n\n(I'll play {ai_move})"
+                            logger.info(f"[AI FALLBACK] {ai_move}")
+                            save_game_pgn(game, "current_game.pgn")
 
-        # Clean response for speech (remove **Move: xxx**)
-        clean_response = response
+        # Clean response for speech (remove **Move: xxx** markers)
         import re
+        clean_response = response
         clean_response = re.sub(r'\*\*Move:\s*[^*]+\*\*', '', clean_response)
         clean_response = re.sub(r'\*\*', '', clean_response)
         clean_response = clean_response.strip()
 
+        # If response is empty after cleaning, provide a simple one
+        if not clean_response and ai_move:
+            clean_response = f"{ai_move}."
+
         await websocket.send_json({
             "type": "ai_response",
             "message": clean_response,
-            "full_response": response,
             "move": ai_move,
             "state": game.state.to_dict()
         })
+
+        # Check for game over and save final PGN
+        if game.state.board.is_game_over():
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_game_pgn(game, f"game_{timestamp}_final.pgn")
+            logger.info(f"[GAME OVER] {game.state.get_result()}")
 
     except Exception as e:
         logger.error(f"AI turn error: {e}")

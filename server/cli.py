@@ -42,8 +42,8 @@ Requirements:
 
     parser.add_argument(
         "--model", "-m",
-        default="llama3.2",
-        help="Ollama model to use (default: llama3.2)"
+        default="qwen2.5:14b",
+        help="Ollama model to use (default: qwen2.5:14b)"
     )
 
     parser.add_argument(
@@ -103,9 +103,21 @@ Requirements:
         if response.status_code == 200:
             models = [m["name"] for m in response.json().get("models", [])]
             print(f"    Ollama: Connected ({len(models)} models available)")
-            if args.model not in models and not any(args.model in m for m in models):
-                print(f"    Warning: Model '{args.model}' may not be available")
+
+            # Check if requested model is available
+            model_available = args.model in models or any(args.model in m for m in models)
+            if not model_available:
+                print(f"    Warning: Model '{args.model}' not found")
                 print(f"    Available: {', '.join(models[:5])}")
+                # Try to find a suitable fallback
+                preferred = ['qwen2.5:14b', 'qwen2.5:7b', 'llama3.1', 'llama3.2', 'llama3', 'mistral']
+                for pref in preferred:
+                    if any(pref in m for m in models):
+                        fallback = next(m for m in models if pref in m)
+                        args.model = fallback
+                        os.environ["CHESS_MODEL"] = fallback
+                        print(f"    Using fallback: {fallback}")
+                        break
         else:
             print("    Ollama: Connection issues")
     except Exception:
