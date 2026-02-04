@@ -333,26 +333,57 @@ def try_parse_player_move(text: str, game: ChessGame) -> Optional[str]:
     import re
     text_lower = text.lower().strip()
 
-    # Handle castling
-    if any(phrase in text_lower for phrase in ["castle kingside", "castle king side", "short castle", "castles kingside"]):
+    # Normalize: remove extra spaces, handle "e 4" -> "e4"
+    normalized = re.sub(r'([a-h])\s+([1-8])', r'\1\2', text_lower)
+    # Handle "knight f 3" -> "knight f3"
+    normalized = re.sub(r'([a-h])\s+([1-8])', r'\1\2', normalized)
+
+    # Handle castling - various spoken forms
+    castling_kingside = ["castle kingside", "castle king side", "short castle",
+                         "castles kingside", "castle short", "kingside castle",
+                         "castle king", "oh oh", "o-o"]
+    castling_queenside = ["castle queenside", "castle queen side", "long castle",
+                          "castles queenside", "castle long", "queenside castle",
+                          "castle queen", "oh oh oh", "o-o-o"]
+
+    if any(phrase in text_lower for phrase in castling_kingside):
         return "O-O"
-    if any(phrase in text_lower for phrase in ["castle queenside", "castle queen side", "long castle", "castles queenside"]):
+    if any(phrase in text_lower for phrase in castling_queenside):
         return "O-O-O"
 
-    # Standard algebraic notation
+    # Standard algebraic notation (with normalized text)
     san_pattern = r'\b([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?)\b'
-    match = re.search(san_pattern, text, re.IGNORECASE)
+    match = re.search(san_pattern, normalized, re.IGNORECASE)
     if match:
         return match.group(1)
 
-    # Spoken format: "knight to f3", "bishop takes c6"
+    # Spoken format: "knight to f3", "bishop takes c6", "pawn e4"
     piece_map = {
         "knight": "N", "bishop": "B", "rook": "R",
         "queen": "Q", "king": "K", "pawn": ""
     }
 
-    spoken_pattern = r'\b(knight|bishop|rook|queen|king|pawn)?\s*(?:to|takes?|captures?)?\s*([a-h])\s*([1-8])\b'
-    match = re.search(spoken_pattern, text_lower)
+    # Pattern handles: "knight to f3", "knight f3", "bishop takes c6", etc.
+    spoken_pattern = r'\b(knight|bishop|rook|queen|king|pawn)?\s*(?:to|takes?|captures?|on)?\s*([a-h])\s*([1-8])\b'
+    match = re.search(spoken_pattern, normalized)
+    if match:
+        piece = piece_map.get(match.group(1), "") if match.group(1) else ""
+        file = match.group(2)
+        rank = match.group(3)
+        return f"{piece}{file}{rank}"
+
+    # Handle spoken numbers: "e four", "knight f three"
+    number_words = {"one": "1", "two": "2", "three": "3", "four": "4",
+                    "five": "5", "six": "6", "seven": "7", "eight": "8"}
+    for word, digit in number_words.items():
+        normalized = normalized.replace(word, digit)
+
+    # Try pattern again with number words replaced
+    match = re.search(san_pattern, normalized, re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    match = re.search(spoken_pattern, normalized)
     if match:
         piece = piece_map.get(match.group(1), "") if match.group(1) else ""
         file = match.group(2)
