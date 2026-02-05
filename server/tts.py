@@ -12,19 +12,27 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-# High-quality neural voices
+# High-quality neural voices (verified available as of 2024)
 VOICES = {
-    "guy": "en-US-GuyNeural",         # American male, warm
-    "jenny": "en-US-JennyNeural",     # American female, friendly
-    "ryan": "en-GB-RyanNeural",       # British male, sophisticated
-    "sonia": "en-GB-SoniaNeural",     # British female, clear
-    "tony": "en-US-TonyNeural",       # American male, casual
-    "aria": "en-US-AriaNeural",       # American female, expressive
-    "davis": "en-US-DavisNeural",     # American male, authoritative
-    "jane": "en-US-JaneNeural",       # American female, professional
+    # American voices
+    "guy": "en-US-GuyNeural",           # American male, warm
+    "jenny": "en-US-JennyNeural",       # American female, friendly
+    "aria": "en-US-AriaNeural",         # American female, expressive
+    "brian": "en-US-BrianNeural",       # American male, conversational
+    "christopher": "en-US-ChristopherNeural",  # American male, professional
+    "eric": "en-US-EricNeural",         # American male, casual
+    "emma": "en-US-EmmaNeural",         # American female, clear
+    "michelle": "en-US-MichelleNeural", # American female, warm
+    "roger": "en-US-RogerNeural",       # American male, deep
+    "steffan": "en-US-SteffanNeural",   # American male, friendly
+    # British voices
+    "ryan": "en-GB-RyanNeural",         # British male, sophisticated
+    "sonia": "en-GB-SoniaNeural",       # British female, clear
+    "thomas": "en-GB-ThomasNeural",     # British male, warm
+    "libby": "en-GB-LibbyNeural",       # British female, friendly
 }
 
-DEFAULT_VOICE = "ryan"  # British male - sounds great for chess
+DEFAULT_VOICE = "brian"  # American male - natural sounding
 
 
 async def text_to_speech(
@@ -90,12 +98,14 @@ async def list_voices(language: str = "en") -> List[Dict]:
 def get_voice_options() -> List[Dict]:
     """Get the curated list of high-quality voices."""
     return [
+        {"key": "brian", "name": "Brian (American Male)", "description": "Natural, conversational"},
         {"key": "ryan", "name": "Ryan (British Male)", "description": "Sophisticated, clear"},
-        {"key": "sonia", "name": "Sonia (British Female)", "description": "Warm, articulate"},
-        {"key": "guy", "name": "Guy (American Male)", "description": "Friendly, natural"},
+        {"key": "guy", "name": "Guy (American Male)", "description": "Friendly, warm"},
         {"key": "jenny", "name": "Jenny (American Female)", "description": "Energetic, expressive"},
-        {"key": "davis", "name": "Davis (American Male)", "description": "Deep, authoritative"},
         {"key": "aria", "name": "Aria (American Female)", "description": "Conversational"},
-        {"key": "tony", "name": "Tony (American Male)", "description": "Casual, relaxed"},
-        {"key": "jane", "name": "Jane (American Female)", "description": "Professional, clear"},
+        {"key": "sonia", "name": "Sonia (British Female)", "description": "Warm, articulate"},
+        {"key": "christopher", "name": "Christopher (American Male)", "description": "Professional"},
+        {"key": "emma", "name": "Emma (American Female)", "description": "Clear, friendly"},
+        {"key": "roger", "name": "Roger (American Male)", "description": "Deep, authoritative"},
+        {"key": "thomas", "name": "Thomas (British Male)", "description": "Warm, natural"},
     ]
