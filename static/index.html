@@ -1021,9 +1021,14 @@
 
         <div class="form-group">
           <label>Voice</label>
-          <select id="voice-select">
-            <option value="">Loading voices...</option>
-          </select>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="voice-select" style="flex: 1;">
+              <option value="">Loading voices...</option>
+            </select>
+            <button id="voice-preview-btn" class="icon-btn" title="Preview voice" style="padding: 8px 12px; font-size: 1rem;">
+              &#9658;
+            </button>
+          </div>
         </div>
 
         <div class="form-group">
@@ -1710,6 +1715,9 @@
         selectedVoice = e.target.value;
       });
 
+      // Voice preview button
+      document.getElementById('voice-preview-btn').addEventListener('click', previewVoice);
+
       // Start game
       document.getElementById('start-btn').addEventListener('click', startGame);
 
@@ -2168,6 +2176,56 @@
       document.getElementById('transcript').textContent = '';
 
       updateMicButton();
+    }
+
+    async function previewVoice() {
+      const btn = document.getElementById('voice-preview-btn');
+      const originalText = btn.innerHTML;
+
+      // Show loading state
+      btn.innerHTML = '...';
+      btn.disabled = true;
+
+      try {
+        const voice = document.getElementById('voice-select').value || 'brian';
+        const text = 'The quick brown fox jumped over the lazy dog.';
+
+        const response = await fetch(`${API_URL}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice, rate: '+0%' })
+        });
+
+        if (!response.ok) {
+          throw new Error(`TTS failed: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        };
+
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        };
+
+        await audio.play();
+
+      } catch (err) {
+        console.error('Voice preview error:', err);
+        btn.innerHTML = '!';
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }, 2000);
+      }
     }
 
     async function speak(text) {
