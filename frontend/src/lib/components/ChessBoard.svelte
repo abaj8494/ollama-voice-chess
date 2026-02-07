@@ -78,9 +78,11 @@
     return (fileIndex + rank) % 2 === 1;
   }
 
+  // Reactive lookup for highlights - creates a map that Svelte can track
+  $: highlightMap = Object.fromEntries(highlights.map(h => [h.square, h.color]));
+
   function getHighlightColor(square) {
-    const highlight = highlights.find(h => h.square === square);
-    return highlight ? highlight.color : null;
+    return highlightMap[square] || null;
   }
 
   function handleSquareClick(e) {
@@ -200,7 +202,7 @@
         {@const isLastMoveSquare = lastMove && (lastMove.from === square || lastMove.to === square)}
         {@const isCheck = square === checkSquare}
         {@const isCapture = isLegal && piece}
-        {@const highlightColor = getHighlightColor(square)}
+        {@const highlightColor = highlightMap[square] || null}
 
         <Square
           {square}

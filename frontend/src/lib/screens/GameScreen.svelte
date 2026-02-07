@@ -1,9 +1,49 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { Chess } from 'chess.js';
+  import { marked } from 'marked';
   import ChessBoard from '../components/ChessBoard.svelte';
   import AnnotationPanel from '../components/AnnotationPanel.svelte';
   import { navigateTo, openModal } from '../stores/app.js';
+
+  // Configure marked for safe inline rendering
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+  });
+
+  // Strip markdown for TTS - convert to plain readable text
+  function stripMarkdownForTTS(text) {
+    return text
+      // Remove code blocks
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove headers but keep text
+      .replace(/#{1,6}\s+/g, '')
+      // Remove bold/italic markers
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      // Remove links but keep text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove bullet points
+      .replace(/^[\s]*[-*+]\s+/gm, '')
+      // Remove numbered lists prefix
+      .replace(/^[\s]*\d+\.\s+/gm, '')
+      // Clean up extra whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  // Render markdown to HTML
+  function renderMarkdown(text) {
+    try {
+      return marked.parse(text);
+    } catch (e) {
+      return text;
+    }
+  }
   import {
     gameState,
     gameId,
@@ -134,16 +174,18 @@
     };
 
     recognition.onerror = (event) => {
-      console.error('Speech error:', event.error);
+      // 'aborted' is expected when we pause for TTS - don't log it
+      if (event.error === 'aborted') return;
+
       if (event.error === 'no-speech' && alwaysOnMode && !isSpeaking && !isThinking) {
         restartListening();
         return;
       }
       if (event.error === 'not-allowed') {
+        console.error('Speech error:', event.error);
         addMessage('system', 'Microphone access denied. Please allow and reload.');
         alwaysOnMode = false;
       }
-      if (event.error === 'aborted') return;
       isListening = false;
     };
 
@@ -456,11 +498,19 @@
     pauseListening(); // Stop listening while speaking
     isSpeaking = true;
 
+    // Strip markdown for natural speech
+    const cleanText = stripMarkdownForTTS(text);
+    if (!cleanText) {
+      isSpeaking = false;
+      resumeListeningIfAlwaysOn();
+      return;
+    }
+
     try {
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: cleanText }),
       });
 
       if (response.ok) {
@@ -699,7 +749,11 @@
             {#if msg.move}
               <strong class="move-badge">{msg.move}</strong>
             {/if}
-            {msg.content}
+            {#if msg.role === 'assistant'}
+              {@html renderMarkdown(msg.content)}
+            {:else}
+              {msg.content}
+            {/if}
           </span>
         </div>
       {/each}
@@ -977,6 +1031,71 @@
     border-radius: 4px;
     margin-right: 6px;
     font-family: monospace;
+  }
+
+  /* Markdown content styles */
+  .message-content :global(p) {
+    margin: 0 0 0.5em 0;
+  }
+
+  .message-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .message-content :global(h1),
+  .message-content :global(h2),
+  .message-content :global(h3),
+  .message-content :global(h4) {
+    margin: 0.5em 0 0.3em 0;
+    font-weight: 600;
+  }
+
+  .message-content :global(h1) { font-size: 1.1em; }
+  .message-content :global(h2) { font-size: 1.05em; }
+  .message-content :global(h3) { font-size: 1em; }
+
+  .message-content :global(ul),
+  .message-content :global(ol) {
+    margin: 0.3em 0;
+    padding-left: 1.5em;
+  }
+
+  .message-content :global(li) {
+    margin: 0.2em 0;
+  }
+
+  .message-content :global(code) {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
+  }
+
+  .message-content :global(pre) {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.5em;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+  }
+
+  .message-content :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+
+  .message-content :global(strong) {
+    font-weight: 600;
+  }
+
+  .message-content :global(em) {
+    font-style: italic;
+  }
+
+  .message-content :global(a) {
+    color: inherit;
+    text-decoration: underline;
   }
 
   .message.thinking .dots {

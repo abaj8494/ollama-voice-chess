@@ -178,7 +178,8 @@ If they ask about a specific move, explain whether it's good or bad and why."""
             response = await self._chat(
                 TUTOR_PROMPT,
                 context,
-                conversation_history[-4:] if conversation_history else []
+                conversation_history[-4:] if conversation_history else [],
+                max_tokens=800  # Allow longer responses for hints/analysis
             )
             return response.strip()
 
@@ -264,6 +265,7 @@ If they ask about a specific move, explain whether it's good or bad and why."""
         system_prompt: str,
         user_message: str,
         conversation_history: List[Dict[str, str]] = None,
+        max_tokens: int = 256,
     ) -> str:
         """Internal method to send a chat request to Ollama."""
         messages = [{"role": "system", "content": system_prompt}]
@@ -282,7 +284,7 @@ If they ask about a specific move, explain whether it's good or bad and why."""
                     "stream": False,
                     "options": {
                         "temperature": 0.7,
-                        "num_predict": 256,  # Keep responses short
+                        "num_predict": max_tokens,
                     }
                 },
             )
