@@ -41,6 +41,27 @@
   let legalMoves = [];
   let lastMove = null;
   let currentAudio = null;
+  let isOpponentMoving = false;
+
+  const AI_MOVE_DELAY = 800; // ms delay for AI moves
+
+  function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Parse move to get from/to squares for lastMove highlighting
+  function parseMoveSquares(san, fen) {
+    const tempChess = new Chess(fen);
+    try {
+      const move = tempChess.move(san);
+      if (move) {
+        return { from: move.from, to: move.to };
+      }
+    } catch (e) {
+      console.error('Failed to parse move:', san, e);
+    }
+    return null;
+  }
 
   // Extract state from training session - API returns state.fen, not fen directly
   $: sessionState = $trainingSession?.state || {};
@@ -104,6 +125,21 @@
       trainingSession.set(result);
 
       addTrainingMessage('info', `Starting ${opening.name} training...`);
+
+      // For defenses, show opponent's first move with delay
+      if (result.opponent_first_move) {
+        isOpponentMoving = true;
+        addTrainingMessage('info', `Opponent plays: ${result.opponent_first_move}`);
+
+        // Parse the move to show lastMove highlight
+        const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const moveSquares = parseMoveSquares(result.opponent_first_move, startFen);
+        if (moveSquares) {
+          await delay(AI_MOVE_DELAY);
+          lastMove = moveSquares;
+        }
+        isOpponentMoving = false;
+      }
 
       // Set hint from current_hint field
       if (result.current_hint) {
@@ -181,9 +217,21 @@
       if (result.correct) {
         addTrainingMessage('success', result.message || 'Correct!');
 
-        // Update opponent's move in lastMove if they responded
-        if (result.opponent_move) {
+        // Show opponent's response with delay
+        if (result.opponent_move && result.state?.fen) {
+          isOpponentMoving = true;
           addTrainingMessage('info', `Opponent plays: ${result.opponent_move}`);
+
+          // Get the FEN before opponent's move to parse it correctly
+          const fenBeforeOpponent = chess.fen();
+          const moveSquares = parseMoveSquares(result.opponent_move, fenBeforeOpponent);
+
+          await delay(AI_MOVE_DELAY);
+
+          if (moveSquares) {
+            lastMove = moveSquares;
+          }
+          isOpponentMoving = false;
         }
       } else {
         addTrainingMessage('error', result.message || 'Not quite...');

@@ -758,6 +758,7 @@ async def start_training(request: StartTrainingRequest):
         "current_hint": first_hint,
         "total_moves": len(opening.main_line),
         "current_move_index": 0,
+        "opponent_first_move": session.opponent_first_move,  # For defenses, shows White's first move
     }
 
 

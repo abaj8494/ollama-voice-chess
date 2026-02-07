@@ -166,7 +166,7 @@ OPENINGS: Dict[str, Opening] = {
             OpeningMove(
                 "d5",
                 "Challenge White's e4 pawn directly. This is the key idea of the Caro-Kann.",
-                ["exd5", "e5", "Nc3"]
+                ["Nc3", "Nd2", "e5"]  # Nc3 first to allow dxe4 next
             ),
             OpeningMove(
                 "dxe4",
