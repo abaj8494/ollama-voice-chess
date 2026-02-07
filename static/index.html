@@ -251,7 +251,7 @@
       justify-content: center;
     }
 
-    #board {
+    #board, #training-board, #review-board {
       width: 100%;
       max-width: 520px;
     }
@@ -990,6 +990,171 @@
 
     /* Utilities */
     .hidden { display: none !important; }
+
+    /* Training Mode Styles */
+    .opening-card {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-left: 4px solid var(--bg-tertiary);
+      transition: all 0.2s;
+    }
+
+    .opening-card:hover {
+      border-color: var(--accent-green);
+      transform: translateX(4px);
+    }
+
+    .opening-card.white-opening {
+      border-left-color: #f8fafc;
+    }
+
+    .opening-card.black-opening {
+      border-left-color: #475569;
+    }
+
+    .opening-card .opening-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 1rem;
+    }
+
+    .opening-card .opening-desc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .opening-card .opening-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      align-items: center;
+    }
+
+    .mastery-badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .mastery-badge.beginner { background: var(--bg-tertiary); color: var(--text-secondary); }
+    .mastery-badge.learning { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+    .mastery-badge.proficient { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+    .mastery-badge.mastered { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+
+    .opening-section-header {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin: 16px 0 8px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--bg-tertiary);
+    }
+
+    /* Review Mode Styles */
+    .review-feedback {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .review-feedback.correct {
+      background: rgba(34, 197, 94, 0.15);
+      border-left: 4px solid var(--accent-green);
+    }
+
+    .review-feedback.incorrect {
+      background: rgba(239, 68, 68, 0.15);
+      border-left: 4px solid var(--accent-red);
+    }
+
+    .review-feedback .feedback-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .review-feedback .feedback-explanation {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .leitner-box-indicator {
+      display: flex;
+      gap: 4px;
+    }
+
+    .leitner-box {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      background: var(--bg-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .leitner-box.active {
+      background: #8b5cf6;
+      color: white;
+    }
+
+    .leitner-box.mastered {
+      background: var(--accent-green);
+      color: white;
+    }
+
+    /* Training completion overlay */
+    .training-complete-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      border-radius: 8px;
+    }
+
+    .training-complete-overlay h2 {
+      color: var(--accent-green);
+      margin-bottom: 16px;
+    }
+
+    .training-complete-overlay .stats {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--bg-tertiary);
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
   </style>
 </head>
 <body>
@@ -1077,6 +1242,191 @@
 
         <button id="start-btn" class="start-btn" disabled>Start New Game</button>
         <button id="load-game-btn" class="start-btn" style="background: var(--bg-tertiary); margin-top: 8px;">Load Saved Game</button>
+
+        <div style="display: flex; gap: 8px; margin-top: 16px;">
+          <button id="train-btn" class="start-btn" style="flex: 1; background: var(--accent-green);">Train Openings</button>
+          <button id="review-btn" class="start-btn" style="flex: 1; background: #8b5cf6;">Review</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Training Mode Modal -->
+    <div id="training-modal" class="modal-overlay">
+      <div class="modal" style="max-width: 600px;">
+        <h2>Training Mode</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">Select an opening to practice</p>
+
+        <div id="training-stats-preview" class="stats-preview" style="margin-bottom: 16px;">
+          <div class="stats-row">
+            <span class="label">Sessions Today</span>
+            <span id="training-sessions-today" class="value">0 / 5</span>
+          </div>
+        </div>
+
+        <div id="openings-list" style="max-height: 350px; overflow-y: auto;">
+          <div style="text-align: center; padding: 20px; color: var(--text-muted);">Loading openings...</div>
+        </div>
+
+        <div class="button-group" style="margin-top: 16px;">
+          <button id="close-training-modal-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Training Screen -->
+    <div id="training-screen" class="game-screen">
+      <div class="board-panel">
+        <div class="game-info">
+          <div id="training-opening-name" class="turn-badge" style="background: var(--accent-green);">Opening Name</div>
+          <div id="training-progress-text" class="status-text">Move 1 of 8</div>
+        </div>
+
+        <div class="board-wrapper">
+          <div id="training-board"></div>
+        </div>
+
+        <div id="training-hint-area" style="margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent-green);">
+          <div id="training-hint-label" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase;">
+            Next Move
+          </div>
+          <div id="training-hint-move" style="font-size: 1.5rem; font-weight: 600; color: var(--accent-green);">
+            d4
+          </div>
+          <div id="training-hint-explanation" style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 8px;">
+            Control the center with your d-pawn
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-panel">
+        <div class="chat-header">
+          <h3>Training</h3>
+          <div class="voice-controls">
+            <button id="training-speaker-toggle" class="icon-btn active" title="Voice (click to mute)">VOL</button>
+            <button id="training-mic-btn" class="icon-btn" title="Ask a question">MIC</button>
+          </div>
+        </div>
+
+        <div id="training-messages" class="messages"></div>
+
+        <div id="training-voice-input" class="voice-input-area" style="display: none; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; margin: 0 16px;">
+          <div id="training-transcript" class="transcript" style="min-height: 40px; padding: 8px; background: var(--bg-primary); border-radius: 4px; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-secondary);"></div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="training-chat-input" placeholder="Ask about this opening..." style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+            <button id="training-send-btn" class="btn btn-primary" style="padding: 8px 16px;">Ask</button>
+          </div>
+        </div>
+
+        <div style="padding: 16px;">
+          <div id="training-accuracy-section" style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 4px;">
+              <span>Accuracy</span>
+              <span id="training-accuracy-value">100%</span>
+            </div>
+            <div style="height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden;">
+              <div id="training-accuracy-bar" style="height: 100%; background: var(--accent-green); width: 100%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+
+          <div id="training-progress-section" style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 4px;">
+              <span>Progress</span>
+              <span id="training-progress-value">0%</span>
+            </div>
+            <div style="height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden;">
+              <div id="training-progress-bar" style="height: 100%; background: var(--accent-blue); width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+
+          <button id="end-training-btn" class="btn btn-secondary" style="width: 100%;">End Training</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Review Mode Modal -->
+    <div id="review-modal" class="modal-overlay">
+      <div class="modal" style="max-width: 450px;">
+        <h2>Spaced Repetition Review</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">Practice positions to improve your memory</p>
+
+        <div id="review-stats-preview" class="stats-preview">
+          <div class="stats-row">
+            <span class="label">Cards Due</span>
+            <span id="review-due-count" class="value">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="label">Total Cards</span>
+            <span id="review-total-count" class="value">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="label">Mastered</span>
+            <span id="review-mastered-count" class="value">0</span>
+          </div>
+        </div>
+
+        <div class="button-group" style="margin-top: 16px;">
+          <button id="start-review-btn" class="btn btn-primary">Start Review</button>
+          <button id="close-review-modal-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Review Screen -->
+    <div id="review-screen" class="game-screen">
+      <div class="board-panel">
+        <div class="game-info">
+          <div id="review-card-type" class="turn-badge" style="background: #8b5cf6;">Opening</div>
+          <div id="review-progress-text" class="status-text">Card 1 of 10</div>
+        </div>
+
+        <div class="board-wrapper">
+          <div id="review-board"></div>
+        </div>
+
+        <div id="review-prompt" style="margin-top: 16px; text-align: center; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+          <p style="color: var(--text-secondary); margin: 0;">Find the best move in this position</p>
+          <p id="review-opening-hint" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px;"></p>
+        </div>
+      </div>
+
+      <div class="chat-panel">
+        <div class="chat-header">
+          <h3>Review</h3>
+          <div class="voice-controls">
+            <button id="review-speaker-toggle" class="icon-btn active" title="Voice (click to mute)">VOL</button>
+            <button id="review-mic-btn" class="icon-btn" title="Speak your move">MIC</button>
+          </div>
+        </div>
+
+        <div id="review-feedback-area" class="messages"></div>
+
+        <div style="padding: 16px;">
+          <div id="review-session-stats" style="margin-bottom: 16px;">
+            <div class="stats-row">
+              <span class="label" style="color: var(--accent-green);">Correct</span>
+              <span id="review-correct-count" class="value">0</span>
+            </div>
+            <div class="stats-row">
+              <span class="label" style="color: var(--accent-red);">Incorrect</span>
+              <span id="review-incorrect-count" class="value">0</span>
+            </div>
+          </div>
+
+          <div id="review-leitner-box" style="margin-bottom: 16px; display: none;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Leitner Box</div>
+            <div class="leitner-box-indicator">
+              <div class="leitner-box" data-box="1">1</div>
+              <div class="leitner-box" data-box="2">2</div>
+              <div class="leitner-box" data-box="3">3</div>
+              <div class="leitner-box" data-box="4">4</div>
+              <div class="leitner-box" data-box="5">5</div>
+              <div class="leitner-box" data-box="6">6</div>
+            </div>
+          </div>
+
+          <button id="skip-review-card-btn" class="btn btn-ghost" style="width: 100%;">Skip This Card</button>
+          <button id="end-review-btn" class="btn btn-secondary" style="width: 100%; margin-top: 8px;">End Review</button>
+        </div>
       </div>
     </div>
 
@@ -1235,6 +1585,7 @@
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script>
     // ===========================================
     // Voice Chess - Frontend Application
@@ -3122,6 +3473,1165 @@
     function closeLoadGameModal() {
       document.getElementById('load-game-modal').classList.remove('active');
     }
+
+    // ===========================================
+    // Training Mode Functions
+    // ===========================================
+
+    let trainingBoard = null;
+    let trainingSession = null;
+    let trainingOpening = null;
+    let trainingSelectedSquare = null;
+    let trainingLegalMoves = [];
+    let trainingVoiceEnabled = true;
+
+    async function loadOpenings() {
+      try {
+        const [openingsRes, statsRes] = await Promise.all([
+          fetch(`${API_URL}/api/openings`),
+          fetch(`${API_URL}/api/training/stats`)
+        ]);
+        const openingsData = await openingsRes.json();
+        const statsData = await statsRes.json();
+
+        // Update sessions today
+        document.getElementById('training-sessions-today').textContent =
+          `${statsData.sessions_today} / ${statsData.daily_goal}`;
+
+        renderOpeningsList(openingsData.openings);
+      } catch (err) {
+        console.error('Failed to load openings:', err);
+        document.getElementById('openings-list').innerHTML =
+          '<div style="text-align: center; padding: 20px; color: var(--accent-red);">Failed to load openings</div>';
+      }
+    }
+
+    function renderOpeningsList(openings) {
+      const container = document.getElementById('openings-list');
+      container.innerHTML = '';
+
+      // Group by color
+      const whiteOpenings = openings.filter(o => o.color === 'white');
+      const blackOpenings = openings.filter(o => o.color === 'black');
+
+      if (whiteOpenings.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'opening-section-header';
+        header.textContent = 'Play as White';
+        container.appendChild(header);
+        whiteOpenings.forEach(o => container.appendChild(createOpeningCard(o)));
+      }
+
+      if (blackOpenings.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'opening-section-header';
+        header.textContent = 'Play as Black';
+        container.appendChild(header);
+        blackOpenings.forEach(o => container.appendChild(createOpeningCard(o)));
+      }
+    }
+
+    function createOpeningCard(opening) {
+      const card = document.createElement('div');
+      card.className = `opening-card ${opening.color}-opening`;
+      card.innerHTML = `
+        <div class="opening-name">${opening.name}</div>
+        <div class="opening-desc">${opening.description}</div>
+        <div class="opening-meta">
+          <span>${opening.move_count} moves</span>
+          <span>${opening.sessions_completed} sessions</span>
+          <span class="mastery-badge ${opening.mastery_level}">${opening.mastery_level}</span>
+          ${opening.response_to ? `<span>vs 1.${opening.response_to}</span>` : ''}
+        </div>
+      `;
+      card.onclick = () => startTrainingSession(opening.id);
+      return card;
+    }
+
+    async function startTrainingSession(openingId) {
+      try {
+        const response = await fetch(`${API_URL}/api/training/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opening_id: openingId }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || 'Failed to start training');
+        }
+
+        trainingSession = data;
+
+        // Hide modal and setup screen, show training screen
+        document.getElementById('training-modal').classList.remove('active');
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('training-screen').classList.add('active');
+
+        // Update UI first
+        document.getElementById('training-opening-name').textContent = data.opening;
+        updateTrainingHint(data.current_hint);
+        updateTrainingProgress();
+
+        // Initialize training board after DOM is ready (ChessboardJS needs visible container)
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            initTrainingBoard(data);
+          }, 50);
+        });
+        addTrainingMessage('info', `Let's practice the ${data.opening}. ${data.current_hint?.explanation || ''}`);
+
+      } catch (err) {
+        console.error('Failed to start training:', err);
+        alert('Failed to start training: ' + err.message);
+      }
+    }
+
+    function initTrainingBoard(sessionData) {
+      const orientation = sessionData.player_color;
+
+      // Destroy existing board if any
+      if (trainingBoard) {
+        trainingBoard.destroy();
+      }
+
+      trainingBoard = Chessboard('training-board', {
+        position: sessionData.state.fen,
+        orientation: orientation,
+        draggable: true,
+        onDragStart: onTrainingDragStart,
+        onDrop: onTrainingDrop,
+        onSnapEnd: onTrainingSnapEnd,
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+      });
+
+      // Make board responsive
+      $(window).on('resize', function() {
+        if (trainingBoard) trainingBoard.resize();
+      });
+
+      // Setup click-to-move
+      setupTrainingClickToMove();
+    }
+
+    function setupTrainingClickToMove() {
+      const boardEl = document.getElementById('training-board');
+      if (!boardEl) return;
+
+      boardEl.addEventListener('click', function(e) {
+        // ChessboardJS uses classes like 'square-e4', not data-square attributes
+        const squareEl = e.target.closest('.square-55d63');
+        if (!squareEl) return;
+
+        // Extract square from class name (e.g., 'square-e4')
+        const classes = squareEl.className.split(' ');
+        const squareClass = classes.find(c => c.startsWith('square-') && c.length === 9);
+        if (!squareClass) return;
+
+        const square = squareClass.substring(7); // Remove 'square-' prefix
+        setTimeout(() => handleTrainingSquareClick(square), 0);
+      });
+    }
+
+    function handleTrainingSquareClick(square) {
+      if (!trainingSession || !trainingBoard) return;
+
+      const position = trainingBoard.position();
+      const piece = position[square];
+
+      // If we have a selected piece and clicked a different square
+      if (trainingSelectedSquare && square !== trainingSelectedSquare) {
+        // Check if this is a valid target
+        if (trainingLegalMoves.includes(square)) {
+          // Make the move
+          const pieceAtSource = position[trainingSelectedSquare];
+          const sanMove = buildTrainingSanMove(trainingSelectedSquare, square, pieceAtSource, position);
+          clearTrainingSelection();
+          submitTrainingMove(sanMove, trainingSelectedSquare, square);
+          return;
+        }
+      }
+
+      // Clicking on own piece - select it
+      if (piece) {
+        const isWhitePiece = piece.charAt(0) === 'w';
+        const isOwnPiece = (trainingSession.player_color === 'white' && isWhitePiece) ||
+                          (trainingSession.player_color === 'black' && !isWhitePiece);
+
+        if (isOwnPiece) {
+          selectTrainingSquare(square);
+          return;
+        }
+      }
+
+      // Clicked empty square or opponent piece without selection
+      clearTrainingSelection();
+    }
+
+    function selectTrainingSquare(square) {
+      clearTrainingSelection();
+      trainingSelectedSquare = square;
+
+      // Highlight selected square - ChessboardJS uses .square-{square} classes
+      $('.square-' + square).addClass('highlight-selected');
+
+      // Get legal moves from game state
+      if (trainingSession && trainingSession.state && trainingSession.state.legal_moves) {
+        const matchingMoves = trainingSession.state.legal_moves.filter(m => m.startsWith(square));
+        trainingLegalMoves = matchingMoves.map(m => m.substring(2, 4));
+
+        // Highlight legal moves
+        const position = trainingBoard.position();
+        trainingLegalMoves.forEach(target => {
+          const targetEl = $('.square-' + target);
+          if (position[target]) {
+            targetEl.addClass('highlight-capture');
+          } else {
+            targetEl.addClass('highlight-legal');
+          }
+        });
+      }
+    }
+
+    function clearTrainingSelection() {
+      trainingSelectedSquare = null;
+      trainingLegalMoves = [];
+      $('#training-board .square-55d63').removeClass('highlight-selected highlight-legal highlight-capture');
+    }
+
+    function buildTrainingSanMove(from, to, piece, position) {
+      const pieceType = piece ? piece.charAt(1).toUpperCase() : 'P';
+      const isCapture = position[to] ? true : false;
+
+      if (pieceType === 'P') {
+        if (from.charAt(0) !== to.charAt(0)) {
+          return from.charAt(0) + 'x' + to;
+        }
+        return to;
+      } else if (pieceType === 'K') {
+        // Check for castling
+        if (from === 'e1' && to === 'g1') return 'O-O';
+        if (from === 'e1' && to === 'c1') return 'O-O-O';
+        if (from === 'e8' && to === 'g8') return 'O-O';
+        if (from === 'e8' && to === 'c8') return 'O-O-O';
+        return isCapture ? pieceType + 'x' + to : pieceType + to;
+      } else {
+        return isCapture ? pieceType + 'x' + to : pieceType + to;
+      }
+    }
+
+    function onTrainingDragStart(source, piece, position, orientation) {
+      // Don't allow moves if session is complete
+      if (!trainingSession) return false;
+
+      // Only allow moving your own pieces
+      const isWhitePiece = piece.search(/^w/) !== -1;
+      const isBlackPiece = piece.search(/^b/) !== -1;
+
+      if (trainingSession.player_color === 'white' && isBlackPiece) return false;
+      if (trainingSession.player_color === 'black' && isWhitePiece) return false;
+
+      return true;
+    }
+
+    let trainingMoveInProgress = false;
+
+    function onTrainingDrop(source, target, piece, newPos, oldPos, orientation) {
+      // Ignore same-square drops (clicks)
+      if (source === target) {
+        return 'snapback';
+      }
+
+      // Prevent double submissions
+      if (trainingMoveInProgress) {
+        return 'snapback';
+      }
+
+      // Get piece type for SAN conversion
+      const pieceType = piece.charAt(1).toUpperCase();
+      let sanMove;
+
+      if (pieceType === 'P') {
+        sanMove = target; // Pawn moves are just the target square
+        if (source.charAt(0) !== target.charAt(0)) {
+          sanMove = source.charAt(0) + 'x' + target; // Capture
+        }
+      } else if (pieceType === 'K' && source === 'e1' && target === 'g1') {
+        sanMove = 'O-O';
+      } else if (pieceType === 'K' && source === 'e1' && target === 'c1') {
+        sanMove = 'O-O-O';
+      } else if (pieceType === 'K' && source === 'e8' && target === 'g8') {
+        sanMove = 'O-O';
+      } else if (pieceType === 'K' && source === 'e8' && target === 'c8') {
+        sanMove = 'O-O-O';
+      } else {
+        sanMove = pieceType + target;
+      }
+
+      submitTrainingMove(sanMove, source, target);
+      return 'snapback'; // Always snapback, we'll update after server response
+    }
+
+    function onTrainingSnapEnd() {
+      // Update board position after snap
+    }
+
+    async function submitTrainingMove(move, source, target) {
+      if (!trainingSession) return;
+      if (trainingMoveInProgress) return;
+
+      trainingMoveInProgress = true;
+
+      try {
+        const response = await fetch(`${API_URL}/api/training/${trainingSession.session_id}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ move: move }),
+        });
+        const data = await response.json();
+
+        if (data.correct) {
+          // Update board position
+          trainingBoard.position(data.state.fen);
+          addTrainingMessage('correct', data.message);
+
+          if (data.is_complete) {
+            await completeTrainingSession();
+          } else {
+            // Update session state
+            trainingSession.current_move_index = data.current_move_index;
+            updateTrainingProgress();
+
+            if (data.next_hint) {
+              updateTrainingHint(data.next_hint);
+            }
+
+            // Show opponent's response if any
+            if (data.opponent_move) {
+              setTimeout(() => {
+                addTrainingMessage('info', `Opponent plays ${data.opponent_move}`);
+              }, 300);
+            }
+          }
+        } else {
+          // Wrong move - show feedback
+          addTrainingMessage('incorrect', data.message);
+          // Don't update board - let them try again
+        }
+
+        // Update accuracy display
+        updateTrainingAccuracy();
+
+      } catch (err) {
+        console.error('Training move error:', err);
+        addTrainingMessage('error', 'Error submitting move. Please try again.');
+      } finally {
+        trainingMoveInProgress = false;
+      }
+    }
+
+    function updateTrainingHint(hint) {
+      if (!hint) {
+        document.getElementById('training-hint-move').textContent = 'Complete!';
+        document.getElementById('training-hint-explanation').textContent = 'Opening sequence finished.';
+        return;
+      }
+
+      const moveEl = document.getElementById('training-hint-move');
+      const explEl = document.getElementById('training-hint-explanation');
+
+      if (hint.level === 'full' && hint.move) {
+        moveEl.textContent = hint.move;
+      } else if (hint.level === 'partial' && hint.piece_hint) {
+        moveEl.textContent = hint.piece_hint;
+      } else if (hint.level === 'minimal') {
+        moveEl.textContent = 'Your move...';
+      } else {
+        moveEl.textContent = '???';
+      }
+
+      explEl.textContent = hint.explanation || '';
+    }
+
+    function updateTrainingProgress() {
+      if (!trainingSession) return;
+
+      const current = trainingSession.current_move_index || 0;
+      const total = trainingSession.total_moves || 8;
+      const progress = (current / total) * 100;
+
+      document.getElementById('training-progress-text').textContent = `Move ${current + 1} of ${total}`;
+      document.getElementById('training-progress-value').textContent = `${Math.round(progress)}%`;
+      document.getElementById('training-progress-bar').style.width = `${progress}%`;
+    }
+
+    function updateTrainingAccuracy() {
+      if (!trainingSession) return;
+
+      // Get state from server
+      fetch(`${API_URL}/api/training/${trainingSession.session_id}/state`)
+        .then(res => res.json())
+        .then(data => {
+          const session = data.session;
+          const total = session.correct_moves + session.incorrect_moves;
+          const accuracy = total > 0 ? (session.correct_moves / total) * 100 : 100;
+
+          document.getElementById('training-accuracy-value').textContent = `${Math.round(accuracy)}%`;
+          document.getElementById('training-accuracy-bar').style.width = `${accuracy}%`;
+        })
+        .catch(err => console.error('Failed to update accuracy:', err));
+    }
+
+    function addTrainingMessage(type, message, shouldSpeak = true) {
+      const container = document.getElementById('training-messages');
+      const msgEl = document.createElement('div');
+      msgEl.className = 'message';
+
+      if (type === 'correct') {
+        msgEl.style.borderLeft = '3px solid var(--accent-green)';
+        msgEl.style.background = 'rgba(34, 197, 94, 0.1)';
+      } else if (type === 'incorrect') {
+        msgEl.style.borderLeft = '3px solid var(--accent-red)';
+        msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
+      } else if (type === 'error') {
+        msgEl.style.borderLeft = '3px solid var(--accent-red)';
+      } else {
+        msgEl.style.borderLeft = '3px solid var(--accent-blue)';
+      }
+
+      msgEl.textContent = message;
+      container.appendChild(msgEl);
+      container.scrollTop = container.scrollHeight;
+
+      // Speak the message if voice is enabled
+      if (shouldSpeak && trainingVoiceEnabled && message) {
+        speakTraining(message);
+      }
+    }
+
+    let trainingCurrentAudio = null;
+
+    async function speakTraining(text) {
+      if (!trainingVoiceEnabled || !text) return;
+
+      // Stop any currently playing audio
+      if (trainingCurrentAudio) {
+        trainingCurrentAudio.pause();
+        trainingCurrentAudio = null;
+      }
+
+      try {
+        // Use the same TTS endpoint as the main game
+        const response = await fetch(`${API_URL}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text }),
+        });
+
+        if (response.ok) {
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          trainingCurrentAudio = new Audio(audioUrl);
+          trainingCurrentAudio.play();
+        }
+      } catch (err) {
+        console.error('Training TTS error:', err);
+      }
+    }
+
+    // Voice input for training - uses Web Speech API
+    let trainingRecognition = null;
+
+    function startTrainingVoiceInput() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        addTrainingMessage('error', 'Voice input not supported in this browser', false);
+        return;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      trainingRecognition = new SpeechRecognition();
+      trainingRecognition.continuous = false;
+      trainingRecognition.interimResults = false;
+      trainingRecognition.lang = 'en-US';
+
+      const micBtn = document.getElementById('training-mic-btn');
+      micBtn.classList.add('active');
+      micBtn.textContent = '...';
+
+      trainingRecognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript;
+        addTrainingMessage('info', `You asked: "${transcript}"`, false);
+        await handleTrainingQuestion(transcript);
+      };
+
+      trainingRecognition.onerror = (event) => {
+        console.error('Training speech error:', event.error);
+        micBtn.classList.remove('active');
+        micBtn.textContent = 'MIC';
+      };
+
+      trainingRecognition.onend = () => {
+        micBtn.classList.remove('active');
+        micBtn.textContent = 'MIC';
+      };
+
+      trainingRecognition.start();
+    }
+
+    async function handleTrainingQuestion(question) {
+      if (!trainingSession || !trainingOpening) return;
+
+      try {
+        // Use Ollama to answer questions about the current opening
+        const context = `You are a chess coach helping a student learn the ${trainingOpening.name} opening.
+The student is on move ${trainingSession.current_move_index + 1} of the opening.
+Current hint: ${trainingSession.current_hint?.move || 'N/A'}
+Opening description: ${trainingOpening.description}
+Keep your answer brief and helpful.`;
+
+        const response = await fetch(`${API_URL}/api/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: question,
+            context: context,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          addTrainingMessage('info', data.answer);
+        } else {
+          addTrainingMessage('info', 'I can help you with questions about this opening. Try asking about why we play certain moves or what our plans are.');
+        }
+      } catch (err) {
+        console.error('Training question error:', err);
+        addTrainingMessage('info', 'I can help you with questions about this opening. Try asking about why we play certain moves or what our plans are.');
+      }
+    }
+
+    // Voice input for review
+    let reviewRecognition = null;
+
+    function startReviewVoiceInput() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        addReviewFeedback(false, '', 'Voice input not supported in this browser');
+        return;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      reviewRecognition = new SpeechRecognition();
+      reviewRecognition.continuous = false;
+      reviewRecognition.interimResults = false;
+      reviewRecognition.lang = 'en-US';
+
+      const micBtn = document.getElementById('review-mic-btn');
+      if (micBtn) {
+        micBtn.classList.add('active');
+        micBtn.textContent = '...';
+      }
+
+      reviewRecognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript;
+        // Try to parse the spoken move and submit it
+        submitReviewAnswer(transcript);
+      };
+
+      reviewRecognition.onerror = (event) => {
+        console.error('Review speech error:', event.error);
+        if (micBtn) {
+          micBtn.classList.remove('active');
+          micBtn.textContent = 'MIC';
+        }
+      };
+
+      reviewRecognition.onend = () => {
+        if (micBtn) {
+          micBtn.classList.remove('active');
+          micBtn.textContent = 'MIC';
+        }
+      };
+
+      reviewRecognition.start();
+    }
+
+    let reviewCurrentAudio = null;
+
+    async function speakReview(text) {
+      if (!reviewVoiceEnabled || !text) return;
+
+      // Stop any currently playing audio
+      if (reviewCurrentAudio) {
+        reviewCurrentAudio.pause();
+        reviewCurrentAudio = null;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text }),
+        });
+
+        if (response.ok) {
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          reviewCurrentAudio = new Audio(audioUrl);
+          reviewCurrentAudio.play();
+        }
+      } catch (err) {
+        console.error('Review TTS error:', err);
+      }
+    }
+
+    async function completeTrainingSession() {
+      if (!trainingSession) return;
+
+      try {
+        const response = await fetch(`${API_URL}/api/training/${trainingSession.session_id}/complete`, {
+          method: 'POST',
+        });
+        const data = await response.json();
+
+        const accuracy = Math.round(data.session_accuracy * 100);
+        addTrainingMessage('info', `Training complete! Accuracy: ${accuracy}%`);
+        addTrainingMessage('info', `New mastery level: ${data.new_mastery_level}`);
+        addTrainingMessage('info', `Sessions today: ${data.sessions_today}/${data.daily_goal}`);
+
+        // Show completion overlay or just wait a bit then go back
+        setTimeout(() => {
+          endTrainingSession();
+        }, 3000);
+
+      } catch (err) {
+        console.error('Failed to complete training:', err);
+      }
+    }
+
+    function endTrainingSession() {
+      // Go back to setup screen
+      document.getElementById('training-screen').classList.remove('active');
+      document.getElementById('setup-screen').style.display = 'flex';
+
+      // Clear training state
+      trainingSession = null;
+      if (trainingBoard) {
+        trainingBoard.destroy();
+        trainingBoard = null;
+      }
+
+      // Clear messages
+      document.getElementById('training-messages').innerHTML = '';
+    }
+
+    // ===========================================
+    // Review Mode Functions
+    // ===========================================
+
+    let reviewBoard = null;
+    let reviewSession = null;
+    let reviewSelectedSquare = null;
+    let reviewLegalMoves = [];
+    let reviewChessGame = null; // chess.js instance for computing legal moves
+    let reviewVoiceEnabled = true;
+    let reviewCurrentCard = null;
+
+    async function loadReviewStats() {
+      try {
+        const response = await fetch(`${API_URL}/api/review/stats`);
+        const stats = await response.json();
+
+        document.getElementById('review-due-count').textContent = stats.due_count;
+        document.getElementById('review-total-count').textContent = stats.total_cards;
+        document.getElementById('review-mastered-count').textContent = stats.mastered_count;
+
+        const startBtn = document.getElementById('start-review-btn');
+        if (stats.due_count === 0) {
+          startBtn.disabled = true;
+          startBtn.textContent = 'No Cards Due';
+        } else {
+          startBtn.disabled = false;
+          startBtn.textContent = `Start Review (${stats.due_count} cards)`;
+        }
+
+      } catch (err) {
+        console.error('Failed to load review stats:', err);
+      }
+    }
+
+    async function startReviewSession() {
+      try {
+        const response = await fetch(`${API_URL}/api/review/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ card_limit: 20 }),
+        });
+        const data = await response.json();
+
+        if (!data.session_id) {
+          alert(data.message || 'No cards to review');
+          return;
+        }
+
+        reviewSession = data;
+
+        // Hide modal and setup screen, show review screen
+        document.getElementById('review-modal').classList.remove('active');
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('review-screen').classList.add('active');
+
+        // Initialize review board after DOM is ready (ChessboardJS needs visible container)
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            initReviewBoard(data.current_card);
+            updateReviewUI(data.current_card);
+          }, 50);
+        });
+
+      } catch (err) {
+        console.error('Failed to start review:', err);
+        alert('Failed to start review: ' + err.message);
+      }
+    }
+
+    function initReviewBoard(card) {
+      // Store current card for reference
+      reviewCurrentCard = card;
+
+      // Determine orientation from FEN (who's turn it is)
+      const fenParts = card.fen.split(' ');
+      const turn = fenParts[1] || 'w';
+      const orientation = turn === 'w' ? 'white' : 'black';
+
+      // Initialize chess.js for computing legal moves
+      reviewChessGame = new Chess(card.fen);
+
+      // Destroy existing board if any
+      if (reviewBoard) {
+        reviewBoard.destroy();
+      }
+
+      reviewBoard = Chessboard('review-board', {
+        position: card.fen,
+        orientation: orientation,
+        draggable: true,
+        onDragStart: onReviewDragStart,
+        onDrop: onReviewDrop,
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+      });
+
+      // Make board responsive
+      $(window).on('resize', function() {
+        if (reviewBoard) reviewBoard.resize();
+      });
+
+      // Setup click-to-move
+      setupReviewClickToMove();
+    }
+
+    function setupReviewClickToMove() {
+      const boardEl = document.getElementById('review-board');
+      if (!boardEl) return;
+
+      // Remove previous listener if any
+      boardEl.removeEventListener('click', handleReviewBoardClick);
+      boardEl.addEventListener('click', handleReviewBoardClick);
+    }
+
+    function handleReviewBoardClick(e) {
+      // ChessboardJS uses classes like 'square-e4', not data-square attributes
+      const squareEl = e.target.closest('.square-55d63');
+      if (!squareEl) return;
+
+      // Extract square from class name (e.g., 'square-e4')
+      const classes = squareEl.className.split(' ');
+      const squareClass = classes.find(c => c.startsWith('square-') && c.length === 9);
+      if (!squareClass) return;
+
+      const square = squareClass.substring(7); // Remove 'square-' prefix
+      setTimeout(() => handleReviewSquareClick(square), 0);
+    }
+
+    function handleReviewSquareClick(square) {
+      if (!reviewSession || !reviewBoard || !reviewChessGame) return;
+
+      const position = reviewBoard.position();
+      const piece = position[square];
+
+      // If we have a selected piece and clicked a different square
+      if (reviewSelectedSquare && square !== reviewSelectedSquare) {
+        // Check if this is a valid target
+        if (reviewLegalMoves.includes(square)) {
+          // Make the move
+          const pieceAtSource = position[reviewSelectedSquare];
+          const sanMove = buildReviewSanMove(reviewSelectedSquare, square, pieceAtSource, position);
+          clearReviewSelection();
+          submitReviewAnswer(sanMove);
+          return;
+        }
+      }
+
+      // Clicking on a piece - select it if it's the side to move
+      if (piece) {
+        const isWhitePiece = piece.charAt(0) === 'w';
+        const turnIsWhite = reviewChessGame.turn() === 'w';
+
+        if ((turnIsWhite && isWhitePiece) || (!turnIsWhite && !isWhitePiece)) {
+          selectReviewSquare(square);
+          return;
+        }
+      }
+
+      // Clicked empty square or wrong color piece without selection
+      clearReviewSelection();
+    }
+
+    function selectReviewSquare(square) {
+      clearReviewSelection();
+      reviewSelectedSquare = square;
+
+      // Highlight selected square - ChessboardJS uses .square-{square} classes
+      $('.square-' + square).addClass('highlight-selected');
+
+      // Get legal moves using chess.js
+      const moves = reviewChessGame.moves({ square: square, verbose: true });
+      reviewLegalMoves = moves.map(m => m.to);
+
+      // Highlight legal moves
+      const position = reviewBoard.position();
+      reviewLegalMoves.forEach(target => {
+        const targetEl = $('.square-' + target);
+        if (position[target]) {
+          targetEl.addClass('highlight-capture');
+        } else {
+          targetEl.addClass('highlight-legal');
+        }
+      });
+    }
+
+    function clearReviewSelection() {
+      reviewSelectedSquare = null;
+      reviewLegalMoves = [];
+      $('#review-board .square-55d63').removeClass('highlight-selected highlight-legal highlight-capture');
+    }
+
+    function buildReviewSanMove(from, to, piece, position) {
+      const pieceType = piece ? piece.charAt(1).toUpperCase() : 'P';
+      const isCapture = position[to] ? true : false;
+
+      if (pieceType === 'P') {
+        if (from.charAt(0) !== to.charAt(0)) {
+          return from.charAt(0) + 'x' + to;
+        }
+        return to;
+      } else if (pieceType === 'K') {
+        // Check for castling
+        if (from === 'e1' && to === 'g1') return 'O-O';
+        if (from === 'e1' && to === 'c1') return 'O-O-O';
+        if (from === 'e8' && to === 'g8') return 'O-O';
+        if (from === 'e8' && to === 'c8') return 'O-O-O';
+        return isCapture ? pieceType + 'x' + to : pieceType + to;
+      } else {
+        return isCapture ? pieceType + 'x' + to : pieceType + to;
+      }
+    }
+
+    function onReviewDragStart(source, piece, position, orientation) {
+      if (!reviewSession) return false;
+      return true;
+    }
+
+    function onReviewDrop(source, target, piece, newPos, oldPos, orientation) {
+      // Build move in various formats to try matching
+      const pieceType = piece.charAt(1).toUpperCase();
+      let sanMove;
+
+      if (pieceType === 'P') {
+        sanMove = target;
+        if (source.charAt(0) !== target.charAt(0)) {
+          sanMove = source.charAt(0) + 'x' + target;
+        }
+      } else if (pieceType === 'K' && Math.abs(source.charCodeAt(0) - target.charCodeAt(0)) > 1) {
+        sanMove = target.charAt(0) === 'g' ? 'O-O' : 'O-O-O';
+      } else {
+        sanMove = pieceType + target;
+      }
+
+      submitReviewAnswer(sanMove);
+      return 'snapback';
+    }
+
+    async function submitReviewAnswer(move) {
+      if (!reviewSession) return;
+
+      try {
+        const response = await fetch(`${API_URL}/api/review/${reviewSession.session_id}/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ move: move }),
+        });
+        const data = await response.json();
+
+        // Show feedback
+        addReviewFeedback(data.correct, data.expected_move, data.explanation);
+
+        // Update stats display
+        document.getElementById('review-correct-count').textContent = data.session_stats.correct;
+        document.getElementById('review-incorrect-count').textContent = data.session_stats.incorrect;
+
+        // Update Leitner box indicator
+        updateLeitnerBoxIndicator(data.new_box);
+
+        if (data.is_session_complete) {
+          setTimeout(() => completeReviewSession(), 2000);
+        } else if (data.next_card) {
+          // Load next card after a brief delay
+          setTimeout(() => {
+            reviewCurrentCard = data.next_card;
+            reviewChessGame = new Chess(data.next_card.fen);
+            clearReviewSelection();
+            reviewBoard.position(data.next_card.fen);
+            updateReviewUI(data.next_card);
+            updateReviewProgress();
+          }, 1500);
+        }
+
+      } catch (err) {
+        console.error('Review answer error:', err);
+      }
+    }
+
+    function updateReviewUI(card) {
+      // Update card type badge
+      const typeLabels = {
+        'opening_sequence': 'Opening',
+        'blunder_position': 'Blunder Review',
+        'tactical_pattern': 'Tactics',
+        'critical_position': 'Critical Position',
+      };
+      document.getElementById('review-card-type').textContent = typeLabels[card.card_type] || card.card_type;
+
+      // Update opening hint if applicable
+      const hintEl = document.getElementById('review-opening-hint');
+      if (card.opening_id) {
+        hintEl.textContent = `Opening: ${card.opening_id.replace(/_/g, ' ')}`;
+        hintEl.style.display = 'block';
+      } else {
+        hintEl.style.display = 'none';
+      }
+
+      // Update Leitner box
+      updateLeitnerBoxIndicator(card.box);
+      document.getElementById('review-leitner-box').style.display = 'block';
+    }
+
+    function updateReviewProgress() {
+      if (!reviewSession) return;
+      const current = reviewSession.current_index || 0;
+      const total = reviewSession.total_cards || 1;
+      document.getElementById('review-progress-text').textContent = `Card ${current + 1} of ${total}`;
+
+      // Update session object
+      reviewSession.current_index = current + 1;
+    }
+
+    function updateLeitnerBoxIndicator(activeBox) {
+      const boxes = document.querySelectorAll('.leitner-box');
+      boxes.forEach(box => {
+        const boxNum = parseInt(box.dataset.box);
+        box.classList.remove('active', 'mastered');
+        if (boxNum === activeBox) {
+          box.classList.add(boxNum >= 5 ? 'mastered' : 'active');
+        }
+      });
+    }
+
+    function addReviewFeedback(correct, expectedMove, explanation) {
+      const container = document.getElementById('review-feedback-area');
+      const feedback = document.createElement('div');
+      feedback.className = `review-feedback ${correct ? 'correct' : 'incorrect'}`;
+      feedback.innerHTML = `
+        <div class="feedback-title">${correct ? 'Correct!' : 'Incorrect'}</div>
+        ${!correct ? `<div>Expected: <strong>${expectedMove}</strong></div>` : ''}
+        <div class="feedback-explanation">${explanation || ''}</div>
+      `;
+      container.insertBefore(feedback, container.firstChild);
+
+      // Keep only last 5 feedbacks
+      while (container.children.length > 5) {
+        container.removeChild(container.lastChild);
+      }
+
+      // Speak the feedback
+      if (reviewVoiceEnabled) {
+        let spokenText = correct ? 'Correct!' : `Incorrect. The expected move was ${expectedMove}.`;
+        if (explanation) {
+          spokenText += ' ' + explanation;
+        }
+        speakReview(spokenText);
+      }
+    }
+
+    async function skipReviewCard() {
+      if (!reviewSession) return;
+
+      try {
+        const response = await fetch(`${API_URL}/api/review/${reviewSession.session_id}/skip`, {
+          method: 'POST',
+        });
+        const data = await response.json();
+
+        if (data.is_session_complete) {
+          completeReviewSession();
+        } else if (data.next_card) {
+          reviewCurrentCard = data.next_card;
+          reviewChessGame = new Chess(data.next_card.fen);
+          clearReviewSelection();
+          reviewBoard.position(data.next_card.fen);
+          updateReviewUI(data.next_card);
+          updateReviewProgress();
+        }
+      } catch (err) {
+        console.error('Failed to skip card:', err);
+      }
+    }
+
+    async function completeReviewSession() {
+      if (!reviewSession) return;
+
+      try {
+        const response = await fetch(`${API_URL}/api/review/${reviewSession.session_id}/complete`, {
+          method: 'POST',
+        });
+        const data = await response.json();
+
+        const accuracy = Math.round(data.accuracy * 100);
+        alert(`Review complete!\n\nCorrect: ${data.correct_count}\nIncorrect: ${data.incorrect_count}\nAccuracy: ${accuracy}%`);
+
+        endReviewSession();
+
+      } catch (err) {
+        console.error('Failed to complete review:', err);
+        endReviewSession();
+      }
+    }
+
+    function endReviewSession() {
+      // Go back to setup screen
+      document.getElementById('review-screen').classList.remove('active');
+      document.getElementById('setup-screen').style.display = 'flex';
+
+      // Clear review state
+      reviewSession = null;
+      if (reviewBoard) {
+        reviewBoard.destroy();
+        reviewBoard = null;
+      }
+
+      // Clear feedback
+      document.getElementById('review-feedback-area').innerHTML = '';
+    }
+
+    // ===========================================
+    // Training/Review Event Listeners Setup
+    // ===========================================
+
+    function setupTrainingReviewListeners() {
+      // Training button
+      document.getElementById('train-btn').addEventListener('click', () => {
+        loadOpenings();
+        document.getElementById('training-modal').classList.add('active');
+      });
+
+      document.getElementById('close-training-modal-btn').addEventListener('click', () => {
+        document.getElementById('training-modal').classList.remove('active');
+      });
+
+      document.getElementById('end-training-btn').addEventListener('click', () => {
+        if (confirm('End training session?')) {
+          // Complete the session first if possible
+          if (trainingSession) {
+            fetch(`${API_URL}/api/training/${trainingSession.session_id}/complete`, { method: 'POST' })
+              .catch(() => {});
+          }
+          endTrainingSession();
+        }
+      });
+
+      // Review button
+      document.getElementById('review-btn').addEventListener('click', () => {
+        loadReviewStats();
+        document.getElementById('review-modal').classList.add('active');
+      });
+
+      document.getElementById('close-review-modal-btn').addEventListener('click', () => {
+        document.getElementById('review-modal').classList.remove('active');
+      });
+
+      document.getElementById('start-review-btn').addEventListener('click', startReviewSession);
+
+      document.getElementById('skip-review-card-btn').addEventListener('click', skipReviewCard);
+
+      document.getElementById('end-review-btn').addEventListener('click', () => {
+        if (confirm('End review session?')) {
+          completeReviewSession();
+        }
+      });
+
+      // Close modals on outside click
+      document.getElementById('training-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'training-modal') {
+          document.getElementById('training-modal').classList.remove('active');
+        }
+      });
+
+      document.getElementById('review-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'review-modal') {
+          document.getElementById('review-modal').classList.remove('active');
+        }
+      });
+
+      // Training voice controls
+      const trainingSpeakerBtn = document.getElementById('training-speaker-toggle');
+      if (trainingSpeakerBtn) {
+        trainingSpeakerBtn.addEventListener('click', () => {
+          trainingVoiceEnabled = !trainingVoiceEnabled;
+          trainingSpeakerBtn.classList.toggle('muted', !trainingVoiceEnabled);
+          trainingSpeakerBtn.classList.toggle('active', trainingVoiceEnabled);
+          trainingSpeakerBtn.textContent = trainingVoiceEnabled ? 'VOL' : 'MUTE';
+        });
+      }
+
+      const trainingMicBtn = document.getElementById('training-mic-btn');
+      if (trainingMicBtn) {
+        trainingMicBtn.addEventListener('click', () => {
+          startTrainingVoiceInput();
+        });
+      }
+
+      // Review voice controls
+      const reviewSpeakerBtn = document.getElementById('review-speaker-toggle');
+      if (reviewSpeakerBtn) {
+        reviewSpeakerBtn.addEventListener('click', () => {
+          reviewVoiceEnabled = !reviewVoiceEnabled;
+          reviewSpeakerBtn.classList.toggle('muted', !reviewVoiceEnabled);
+          reviewSpeakerBtn.classList.toggle('active', reviewVoiceEnabled);
+          reviewSpeakerBtn.textContent = reviewVoiceEnabled ? 'VOL' : 'MUTE';
+        });
+      }
+
+      const reviewMicBtn = document.getElementById('review-mic-btn');
+      if (reviewMicBtn) {
+        reviewMicBtn.addEventListener('click', () => {
+          startReviewVoiceInput();
+        });
+      }
+    }
+
+    // Add to initialization
+    document.addEventListener('DOMContentLoaded', () => {
+      setupTrainingReviewListeners();
+    });
   </script>
 </body>
 </html>
