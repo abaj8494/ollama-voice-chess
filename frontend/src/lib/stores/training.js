@@ -47,11 +47,14 @@ export const trainingProgress = derived(
   }
 );
 
+// Message ID counter for unique keys
+let messageIdCounter = 0;
+
 // Add a training message
 export function addTrainingMessage(type, message) {
   trainingMessages.update(msgs => [
     ...msgs,
-    { type, message, timestamp: Date.now() }
+    { id: ++messageIdCounter, type, message, timestamp: Date.now() }
   ]);
 }
 

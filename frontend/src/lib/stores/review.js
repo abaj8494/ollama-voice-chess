@@ -40,10 +40,13 @@ export const reviewProgress = derived(
   }
 );
 
+// Feedback ID counter for unique keys
+let feedbackIdCounter = 0;
+
 // Add review feedback
 export function addReviewFeedback(correct, expectedMove, explanation) {
   reviewFeedback.update(items => [
-    { correct, expectedMove, explanation, timestamp: Date.now() },
+    { id: ++feedbackIdCounter, correct, expectedMove, explanation, timestamp: Date.now() },
     ...items.slice(0, 4), // Keep last 5
   ]);
 }

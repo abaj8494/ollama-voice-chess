@@ -419,7 +419,7 @@
 
         <div class="recent-feedback">
           <h4>Recent</h4>
-          {#each $reviewFeedback as fb (fb.timestamp)}
+          {#each $reviewFeedback as fb (fb.id)}
             <div class="feedback-item" class:correct={fb.correct} class:incorrect={!fb.correct}>
               <span class="fb-icon">{fb.correct ? '✓' : '✗'}</span>
               <span class="fb-move">{fb.expectedMove}</span>

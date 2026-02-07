@@ -387,7 +387,7 @@
         {/if}
 
         <div class="feedback-list">
-          {#each $trainingMessages.slice(-5).reverse() as msg (msg.timestamp)}
+          {#each $trainingMessages.slice(-5).reverse() as msg (msg.id)}
             <div class="feedback-item {msg.type}">
               {msg.message}
             </div>

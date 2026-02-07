@@ -229,8 +229,9 @@
   }
 
   // Chat
+  let messageIdCounter = 0;
   function addMessage(role, content, move = null) {
-    messages = [...messages, { role, content, move, timestamp: Date.now() }];
+    messages = [...messages, { id: ++messageIdCounter, role, content, move, timestamp: Date.now() }];
   }
 
   function sendChat(text) {
@@ -375,7 +376,7 @@
     </div>
 
     <div class="messages">
-      {#each messages as msg (msg.timestamp)}
+      {#each messages as msg (msg.id)}
         <div class="message {msg.role}">
           <span class="message-content">
             {#if msg.move}
