@@ -599,6 +599,27 @@ async def get_pgn(game_id: str):
     return {"pgn": game.get_pgn()}
 
 
+@app.delete("/api/game/{game_id}/delete")
+async def delete_game(game_id: str):
+    """Delete game and its backup PGN file."""
+    # Remove from active games
+    if game_id in games:
+        del games[game_id]
+
+    # Delete current_game.pgn backup
+    backup_path = GAMES_DIR / "current_game.pgn"
+    deleted = False
+    if backup_path.exists():
+        try:
+            backup_path.unlink()
+            deleted = True
+            logger.info(f"Deleted game backup: {backup_path}")
+        except Exception as e:
+            logger.error(f"Failed to delete backup: {e}")
+
+    return {"success": True, "deleted_backup": deleted}
+
+
 # ==================== TRAINING MODE ENDPOINTS ====================
 
 @app.get("/api/openings")
