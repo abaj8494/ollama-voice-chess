@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import Square from './Square.svelte';
   import Piece from './Piece.svelte';
+  import { ANNOTATION_COLORS } from '../stores/annotations.js';
 
   // Props
   export let position = {};          // { a1: 'wR', e1: 'wK', ... } or FEN string
@@ -11,6 +12,12 @@
   export let legalMoves = [];        // Array of legal target squares ['e4', 'd4']
   export let lastMove = null;        // { from: 'e2', to: 'e4' }
   export let checkSquare = null;     // Square where king is in check
+
+  // Annotation props
+  export let arrows = [];            // Array of { from, to, color }
+  export let highlights = [];        // Array of { square, color }
+  export let annotationsEnabled = false;
+  export let annotationColor = 'green';
 
   const dispatch = createEventDispatcher();
 
@@ -29,6 +36,14 @@
   // Track dragging state
   let isDragging = false;
   let dragSource = null;
+
+  // Annotation drawing state
+  let isDrawingArrow = false;
+  let arrowStart = null;
+  let arrowEnd = null;
+
+  // Board element reference for coordinate calculation
+  let boardEl;
 
   function fenToPosition(fen) {
     const pos = {};
@@ -63,6 +78,11 @@
     return (fileIndex + rank) % 2 === 1;
   }
 
+  function getHighlightColor(square) {
+    const highlight = highlights.find(h => h.square === square);
+    return highlight ? highlight.color : null;
+  }
+
   function handleSquareClick(e) {
     if (!interactive) return;
     const { square } = e.detail;
@@ -92,10 +112,86 @@
     isDragging = false;
     dragSource = null;
   }
+
+  // Right-click handling for annotations
+  function handleContextMenu(e) {
+    if (!annotationsEnabled) return;
+    e.preventDefault();
+  }
+
+  function handleSquareRightClick(e) {
+    if (!annotationsEnabled) return;
+    const { square } = e.detail;
+
+    if (!isDrawingArrow) {
+      // Start drawing arrow or toggle highlight
+      isDrawingArrow = true;
+      arrowStart = square;
+      arrowEnd = square;
+    }
+  }
+
+  function handleSquareRightUp(e) {
+    if (!annotationsEnabled || !isDrawingArrow) return;
+    const { square } = e.detail;
+
+    if (arrowStart === square) {
+      // Same square - toggle highlight
+      dispatch('toggleHighlight', { square, color: annotationColor });
+    } else {
+      // Different square - add arrow
+      dispatch('toggleArrow', { from: arrowStart, to: square, color: annotationColor });
+    }
+
+    isDrawingArrow = false;
+    arrowStart = null;
+    arrowEnd = null;
+  }
+
+  function handleSquareMouseEnter(square) {
+    if (isDrawingArrow) {
+      arrowEnd = square;
+    }
+  }
+
+  // Convert square to SVG coordinates
+  function squareToCoords(square) {
+    const file = square.charCodeAt(0) - 97; // a=0, h=7
+    const rank = parseInt(square[1]) - 1;   // 1=0, 8=7
+
+    let x, y;
+    if (orientation === 'white') {
+      x = file * 12.5 + 6.25;
+      y = (7 - rank) * 12.5 + 6.25;
+    } else {
+      x = (7 - file) * 12.5 + 6.25;
+      y = rank * 12.5 + 6.25;
+    }
+    return { x, y };
+  }
+
+  // Generate arrow path
+  function getArrowPath(from, to) {
+    const start = squareToCoords(from);
+    const end = squareToCoords(to);
+
+    // Shorten the arrow slightly so it doesn't overlap piece
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const shortenBy = 3; // percentage units
+
+    const endX = end.x - (dx / len) * shortenBy;
+    const endY = end.y - (dy / len) * shortenBy;
+    const startX = start.x + (dx / len) * 2;
+    const startY = start.y + (dy / len) * 2;
+
+    return { startX, startY, endX, endY };
+  }
 </script>
 
-<div class="board-container">
-  <div class="board" class:flipped={orientation === 'black'}>
+<div class="board-container" on:contextmenu={handleContextMenu}>
+  <div class="board" class:flipped={orientation === 'black'} bind:this={boardEl}>
     {#each ranks as rank}
       {#each files as file}
         {@const square = file + rank}
@@ -106,6 +202,7 @@
         {@const isLastMoveSquare = lastMove && (lastMove.from === square || lastMove.to === square)}
         {@const isCheck = square === checkSquare}
         {@const isCapture = isLegal && piece}
+        {@const highlightColor = getHighlightColor(square)}
 
         <Square
           {square}
@@ -115,8 +212,12 @@
           isCapture={!!isCapture}
           isLastMove={isLastMoveSquare}
           {isCheck}
+          {highlightColor}
           on:click={handleSquareClick}
           on:drop={handleDrop}
+          on:rightclick={handleSquareRightClick}
+          on:rightup={handleSquareRightUp}
+          on:mouseenter={() => handleSquareMouseEnter(square)}
         >
           {#if piece && !(isDragging && dragSource === square)}
             <Piece
@@ -129,6 +230,59 @@
         </Square>
       {/each}
     {/each}
+
+    <!-- Arrow SVG overlay -->
+    <svg class="arrow-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        {#each Object.entries(ANNOTATION_COLORS) as [colorName, colors]}
+          <marker
+            id="arrowhead-{colorName}"
+            markerWidth="4"
+            markerHeight="4"
+            refX="2"
+            refY="2"
+            orient="auto"
+          >
+            <polygon points="0 0, 4 2, 0 4" fill={colors.fill} />
+          </marker>
+        {/each}
+      </defs>
+
+      <!-- Stored arrows -->
+      {#each arrows as arrow}
+        {@const path = getArrowPath(arrow.from, arrow.to)}
+        {@const colors = ANNOTATION_COLORS[arrow.color] || ANNOTATION_COLORS.green}
+        <line
+          x1={path.startX}
+          y1={path.startY}
+          x2={path.endX}
+          y2={path.endY}
+          stroke={colors.fill}
+          stroke-width="2.5"
+          stroke-linecap="round"
+          marker-end="url(#arrowhead-{arrow.color})"
+          class="arrow"
+        />
+      {/each}
+
+      <!-- Arrow being drawn -->
+      {#if isDrawingArrow && arrowStart && arrowEnd && arrowStart !== arrowEnd}
+        {@const path = getArrowPath(arrowStart, arrowEnd)}
+        {@const colors = ANNOTATION_COLORS[annotationColor] || ANNOTATION_COLORS.green}
+        <line
+          x1={path.startX}
+          y1={path.startY}
+          x2={path.endX}
+          y2={path.endY}
+          stroke={colors.fill}
+          stroke-width="2.5"
+          stroke-linecap="round"
+          marker-end="url(#arrowhead-{annotationColor})"
+          class="arrow drawing"
+          opacity="0.7"
+        />
+      {/if}
+    </svg>
   </div>
 
   <!-- File labels -->
@@ -155,12 +309,27 @@
   }
 
   .board {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(8, 1fr);
     border: 4px solid var(--board-border);
     border-radius: 4px;
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .arrow-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .arrow {
+    filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
   }
 
   .file-labels {

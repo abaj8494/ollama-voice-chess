@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { Chess } from 'chess.js';
   import ChessBoard from '../components/ChessBoard.svelte';
+  import AnnotationPanel from '../components/AnnotationPanel.svelte';
   import { navigateTo } from '../stores/app.js';
   import {
     trainingSession,
@@ -15,6 +16,15 @@
     addTrainingMessage,
     resetTraining,
   } from '../stores/training.js';
+  import {
+    arrows,
+    highlights,
+    annotationsEnabled,
+    annotationColor,
+    toggleArrow,
+    toggleHighlight,
+    clearAnnotations,
+  } from '../stores/annotations.js';
   import {
     getOpenings,
     getTrainingStats,
@@ -280,6 +290,16 @@
     if (mastery >= 0.4) return 'Learning';
     return 'Beginner';
   }
+
+  function handleToggleHighlight(e) {
+    const { square, color } = e.detail;
+    toggleHighlight(square, color);
+  }
+
+  function handleToggleArrow(e) {
+    const { from, to, color } = e.detail;
+    toggleArrow(from, to, color);
+  }
 </script>
 
 <div class="training-screen">
@@ -336,6 +356,10 @@
   {:else}
     <!-- Training Session -->
     <div class="session-view">
+      <div class="annotation-area">
+        <AnnotationPanel />
+      </div>
+
       <div class="board-area">
         <div class="session-header">
           <h3>{$currentOpening?.name || 'Training'}</h3>
@@ -354,9 +378,15 @@
           {selectedSquare}
           legalMoves={legalMoves}
           {lastMove}
+          arrows={$arrows}
+          highlights={$highlights}
+          annotationsEnabled={$annotationsEnabled}
+          annotationColor={$annotationColor}
           on:squareClick={handleSquareClick}
           on:dragStart={handleDragStart}
           on:move={handleMove}
+          on:toggleHighlight={handleToggleHighlight}
+          on:toggleArrow={handleToggleArrow}
         />
 
         <div class="board-footer">
@@ -559,9 +589,16 @@
   .session-view {
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 260px 1fr 320px;
     gap: 0;
     height: calc(100vh - 60px);
+  }
+
+  .annotation-area {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+    padding: 20px;
+    overflow-y: auto;
   }
 
   .board-area {
@@ -758,10 +795,24 @@
     color: var(--accent-red);
   }
 
+  @media (max-width: 1100px) {
+    .session-view {
+      grid-template-columns: 1fr 280px;
+    }
+
+    .annotation-area {
+      display: none;
+    }
+  }
+
   @media (max-width: 900px) {
     .session-view {
       grid-template-columns: 1fr;
       grid-template-rows: 1fr auto;
+    }
+
+    .annotation-area {
+      display: none;
     }
 
     .hint-panel {

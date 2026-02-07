@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { Chess } from 'chess.js';
   import ChessBoard from '../components/ChessBoard.svelte';
+  import AnnotationPanel from '../components/AnnotationPanel.svelte';
   import { navigateTo, openModal } from '../stores/app.js';
   import {
     gameState,
@@ -16,6 +17,14 @@
     resetGame,
     updateGameState,
   } from '../stores/game.js';
+  import {
+    arrows,
+    highlights,
+    annotationsEnabled,
+    annotationColor,
+    toggleArrow,
+    toggleHighlight,
+  } from '../stores/annotations.js';
 
   // Local state
   let messages = [];
@@ -310,9 +319,23 @@
   function toggleVoice() {
     settings.update(s => ({ ...s, voiceEnabled: !s.voiceEnabled }));
   }
+
+  function handleToggleHighlight(e) {
+    const { square, color } = e.detail;
+    toggleHighlight(square, color);
+  }
+
+  function handleToggleArrow(e) {
+    const { from, to, color } = e.detail;
+    toggleArrow(from, to, color);
+  }
 </script>
 
 <div class="game-screen">
+  <div class="annotation-area">
+    <AnnotationPanel />
+  </div>
+
   <div class="board-section">
     <div class="board-header">
       <div class="turn-indicator" class:active={!isMyTurn}>
@@ -330,9 +353,15 @@
       selectedSquare={$selectedSquare}
       legalMoves={$legalMovesForSelected}
       lastMove={$lastMove}
+      arrows={$arrows}
+      highlights={$highlights}
+      annotationsEnabled={$annotationsEnabled}
+      annotationColor={$annotationColor}
       on:squareClick={handleSquareClick}
       on:dragStart={handleDragStart}
       on:move={handleMove}
+      on:toggleHighlight={handleToggleHighlight}
+      on:toggleArrow={handleToggleArrow}
     />
 
     <div class="board-footer">
@@ -411,10 +440,17 @@
   .game-screen {
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 380px;
+    grid-template-columns: 260px 1fr 380px;
     gap: 0;
     height: calc(100vh - 60px);
     overflow: hidden;
+  }
+
+  .annotation-area {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+    padding: 20px;
+    overflow-y: auto;
   }
 
   .board-section {
@@ -639,10 +675,24 @@
   }
 
   /* Responsive */
+  @media (max-width: 1100px) {
+    .game-screen {
+      grid-template-columns: 1fr 340px;
+    }
+
+    .annotation-area {
+      display: none;
+    }
+  }
+
   @media (max-width: 900px) {
     .game-screen {
       grid-template-columns: 1fr;
       grid-template-rows: 1fr auto;
+    }
+
+    .annotation-area {
+      display: none;
     }
 
     .chat-section {
