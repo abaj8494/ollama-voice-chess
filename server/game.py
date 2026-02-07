@@ -87,13 +87,17 @@ class ChessGame:
                 "state": self.state.to_dict()
             }
 
-        # Get SAN before pushing (for recording)
+        # Get SAN and squares before pushing (for recording)
         san = self.state.board.san(move)
+        from_square = chess.square_name(move.from_square)
+        to_square = chess.square_name(move.to_square)
         self.state.board.push(move)
 
         return {
             "success": True,
             "move": san,
+            "from": from_square,
+            "to": to_square,
             "state": self.state.to_dict()
         }
 

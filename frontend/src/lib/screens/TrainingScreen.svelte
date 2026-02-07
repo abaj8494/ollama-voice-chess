@@ -52,20 +52,6 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  // Parse move to get from/to squares for lastMove highlighting
-  function parseMoveSquares(san, fen) {
-    const tempChess = new Chess(fen);
-    try {
-      const move = tempChess.move(san);
-      if (move) {
-        return { from: move.from, to: move.to };
-      }
-    } catch (e) {
-      console.error('Failed to parse move:', san, e);
-    }
-    return null;
-  }
-
   // Extract state from training session - API returns state.fen, not fen directly
   $: sessionState = $trainingSession?.state || {};
   $: sessionFen = sessionState?.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -140,12 +126,11 @@
         isOpponentMoving = true;
         addTrainingMessage('info', `Opponent plays: ${result.opponent_first_move}`);
 
-        // Parse the move to show lastMove highlight
-        const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const moveSquares = parseMoveSquares(result.opponent_first_move, startFen);
-        if (moveSquares) {
-          await delay(AI_MOVE_DELAY);
-          lastMove = moveSquares;
+        await delay(AI_MOVE_DELAY);
+
+        // Use server-provided squares for lastMove highlight
+        if (result.opponent_first_move_from && result.opponent_first_move_to) {
+          lastMove = { from: result.opponent_first_move_from, to: result.opponent_first_move_to };
         }
         isOpponentMoving = false;
       }
@@ -231,10 +216,6 @@
         if (result.opponent_move && result.state?.fen) {
           isOpponentMoving = true;
 
-          // First, get the position BEFORE opponent's move for parsing
-          const fenBeforeOpponent = chess.fen();
-          const moveSquares = parseMoveSquares(result.opponent_move, fenBeforeOpponent);
-
           // Show message and wait
           addTrainingMessage('info', `Opponent plays: ${result.opponent_move}`);
           await delay(AI_MOVE_DELAY);
@@ -248,8 +229,9 @@
             }));
           }
 
-          if (moveSquares) {
-            lastMove = moveSquares;
+          // Use server-provided squares for lastMove highlight
+          if (result.opponent_move_from && result.opponent_move_to) {
+            lastMove = { from: result.opponent_move_from, to: result.opponent_move_to };
           }
           isOpponentMoving = false;
         } else if (result.state) {

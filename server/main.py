@@ -729,10 +729,15 @@ async def start_training(request: StartTrainingRequest):
     games[session_id] = game
 
     # If player is Black, AI needs to play White's first move
+    opponent_first_move_from = None
+    opponent_first_move_to = None
     if opening.color.value == "black" and opening.response_to:
         first_move = opening.response_to  # "e4" or "d4"
-        game.make_move(first_move)
+        move_result = game.make_move(first_move)
         session.opponent_first_move = first_move
+        if move_result and move_result.get('success'):
+            opponent_first_move_from = move_result.get('from')
+            opponent_first_move_to = move_result.get('to')
 
     # Get first hint for player
     first_hint = None
@@ -759,6 +764,8 @@ async def start_training(request: StartTrainingRequest):
         "total_moves": len(opening.main_line),
         "current_move_index": 0,
         "opponent_first_move": session.opponent_first_move,  # For defenses, shows White's first move
+        "opponent_first_move_from": opponent_first_move_from,
+        "opponent_first_move_to": opponent_first_move_to,
     }
 
 
@@ -799,11 +806,16 @@ async def training_move(session_id: str, request: TrainingMoveRequest):
 
         # Make opponent's response if available and not at end
         opponent_move = None
+        opponent_move_from = None
+        opponent_move_to = None
         if session.current_move_index < len(opening.main_line):
             if expected_move.common_responses:
                 opponent_move = expected_move.common_responses[0]
                 try:
-                    game.make_move(opponent_move)
+                    move_result = game.make_move(opponent_move)
+                    if move_result:
+                        opponent_move_from = move_result.get('from')
+                        opponent_move_to = move_result.get('to')
                 except:
                     pass  # Opponent move might not be valid in all positions
 
@@ -825,6 +837,8 @@ async def training_move(session_id: str, request: TrainingMoveRequest):
             "correct": True,
             "message": "Correct! " + expected_move.explanation,
             "opponent_move": opponent_move,
+            "opponent_move_from": opponent_move_from,
+            "opponent_move_to": opponent_move_to,
             "state": game.state.to_dict(),
             "next_hint": next_hint,
             "is_complete": is_complete,
