@@ -386,12 +386,19 @@
           </div>
         {/if}
 
-        <div class="feedback-list">
-          {#each $trainingMessages.slice(-5).reverse() as msg (msg.id)}
-            <div class="feedback-item {msg.type}">
-              {msg.message}
-            </div>
-          {/each}
+        <div class="feedback-section">
+          <h4>Feedback</h4>
+          <div class="feedback-list">
+            {#if $trainingMessages.length === 0}
+              <div class="feedback-empty">Make a move to see feedback</div>
+            {:else}
+              {#each $trainingMessages.slice(-5) as msg (msg.id)}
+                <div class="feedback-item {msg.type}">
+                  {msg.message}
+                </div>
+              {/each}
+            {/if}
+          </div>
         </div>
       </div>
     </div>
@@ -682,12 +689,36 @@
     line-height: 1.5;
   }
 
+  .feedback-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+  }
+
+  .feedback-section h4 {
+    margin: 0 0 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
   .feedback-list {
     flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .feedback-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 20px;
   }
 
   .feedback-item {
