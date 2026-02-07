@@ -57,7 +57,7 @@ OPENINGS: Dict[str, Opening] = {
             ),
             OpeningMove(
                 "e3",
-                "Support d4 and prepare to develop your light-squared bishop to d3.",
+                "Solidify your center by supporting d4 and free your light-squared bishop.",
                 ["c5", "e6", "Nc6", "Nf6"]
             ),
             OpeningMove(
@@ -128,7 +128,7 @@ OPENINGS: Dict[str, Opening] = {
             ),
             OpeningMove(
                 "e3",
-                "Prepare Bd3. Solid and flexible - supports d4 and opens the bishop.",
+                "Solidify your center and free your light-squared bishop. Flexible and strong.",
                 ["O-O", "Nbd7", "h6"]
             ),
             OpeningMove(
@@ -160,7 +160,7 @@ OPENINGS: Dict[str, Opening] = {
         main_line=[
             OpeningMove(
                 "c6",
-                "Prepare to play d5 next move. Unlike e6, this keeps your light bishop free!",
+                "Support your d5 push while keeping your light-squared bishop free to develop actively.",
                 ["d4", "Nc3", "Nf3"]
             ),
             OpeningMove(
@@ -247,7 +247,7 @@ OPENINGS: Dict[str, Opening] = {
             ),
             OpeningMove(
                 "e6",
-                "Prepare to develop your dark-squared bishop. Your center is solid.",
+                "Strengthen your center and open the diagonal for your dark-squared bishop.",
                 ["O-O", "Bd3", "Be2"]
             ),
             OpeningMove(
@@ -279,7 +279,7 @@ OPENINGS: Dict[str, Opening] = {
             ),
             OpeningMove(
                 "g6",
-                "Prepare to fianchetto your bishop. It will be a monster on g7!",
+                "Set up the fianchetto formation. Your dark-squared bishop will be powerful on the long diagonal.",
                 ["Nc3", "Nf3", "e4"]
             ),
             OpeningMove(
@@ -289,7 +289,7 @@ OPENINGS: Dict[str, Opening] = {
             ),
             OpeningMove(
                 "d6",
-                "Prepare the e5 pawn break. This is the key attacking idea.",
+                "Defend e5 and create a flexible pawn structure. Your e5 break is now ready when the time is right.",
                 ["Nf3", "Be2", "f3"]
             ),
             OpeningMove(
@@ -309,7 +309,7 @@ OPENINGS: Dict[str, Opening] = {
             ),
             OpeningMove(
                 "Ne7",
-                "Reposition your knight! It will support the f5 pawn push - your main attack.",
+                "Reposition your knight to a flexible square. From here it supports both f5 and c6 plans.",
                 ["Nd3", "Be3", "Bg5"]
             ),
         ],
