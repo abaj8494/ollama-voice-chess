@@ -486,7 +486,7 @@
             {#if $trainingMessages.length === 0}
               <div class="feedback-empty">Make a move to see feedback</div>
             {:else}
-              {#each [...$trainingMessages].slice(-5).reverse() as msg (msg.id)}
+              {#each [...$trainingMessages].slice(-10).reverse() as msg (msg.id)}
                 <div class="feedback-item {msg.type}">
                   {msg.message}
                 </div>
