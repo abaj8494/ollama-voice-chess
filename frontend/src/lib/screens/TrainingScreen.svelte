@@ -51,8 +51,8 @@
   $: fenTurn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
   $: isMyTurn = fenTurn === orientation;
 
-  // Hint from current_hint field
-  $: hint = $trainingSession?.current_hint || null;
+  // Hint from currentHint store (updated after each move)
+  $: hint = $currentHint;
   $: hintLevel = $trainingSession?.hint_level || 'full';
 
   $: {
