@@ -108,8 +108,10 @@
       // Set hint from current_hint field
       if (result.current_hint) {
         currentHint.set(result.current_hint);
+        const hintSpeech = buildHintSpeech(result.current_hint);
+        addTrainingMessage('hint', hintSpeech);
         if ($trainingVoiceEnabled) {
-          speak(buildHintSpeech(result.current_hint));
+          speak(hintSpeech);
         }
       }
     } catch (e) {
@@ -204,8 +206,10 @@
       // Set next hint
       if (result.next_hint) {
         currentHint.set(result.next_hint);
+        const hintSpeech = buildHintSpeech(result.next_hint);
+        addTrainingMessage('hint', hintSpeech);
         if ($trainingVoiceEnabled) {
-          speak(buildHintSpeech(result.next_hint));
+          speak(hintSpeech);
         }
       } else {
         currentHint.set(null);
