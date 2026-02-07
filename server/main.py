@@ -122,10 +122,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files
+# Static files - serve Svelte build from static/dist
 static_dir = Path(__file__).parent.parent / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+dist_dir = static_dir / "dist"
+
+# Serve assets (JS, CSS) from dist/assets
+if dist_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(dist_dir / "assets")), name="assets")
+    app.mount("/pieces", StaticFiles(directory=str(dist_dir / "pieces")), name="pieces")
 
 
 # Pydantic models
@@ -175,10 +179,14 @@ class ReviewAnswerRequest(BaseModel):
 # REST endpoints
 @app.get("/")
 async def root():
-    """Serve the main HTML page."""
-    index_path = static_dir / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
+    """Serve the Svelte SPA."""
+    # Try dist first (Svelte build), fall back to legacy index.html
+    dist_index = dist_dir / "index.html"
+    if dist_index.exists():
+        return FileResponse(dist_index)
+    legacy_index = static_dir / "index.html"
+    if legacy_index.exists():
+        return FileResponse(legacy_index)
     return {"message": "Voice Chess API", "docs": "/docs"}
 
 
