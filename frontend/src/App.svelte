@@ -15,16 +15,23 @@
   import TrainingModal from './lib/modals/TrainingModal.svelte';
   import ReviewModal from './lib/modals/ReviewModal.svelte';
 
-  let healthStatus = 'checking';
+  let serverStatus = 'checking';
 
   onMount(async () => {
     try {
       await checkHealth();
-      healthStatus = 'healthy';
+      serverStatus = 'connected';
     } catch (e) {
-      healthStatus = 'error';
+      serverStatus = 'error';
     }
   });
+
+  // Show WebSocket status only during game, otherwise show server status
+  $: showWebSocket = $currentScreen === 'game';
+  $: statusConnected = showWebSocket ? $connectionStatus === 'connected' : serverStatus === 'connected';
+  $: statusText = showWebSocket
+    ? ($connectionStatus === 'connected' ? 'Connected' : 'Disconnected')
+    : (serverStatus === 'connected' ? 'Server Ready' : 'Server Offline');
 </script>
 
 <div class="app">
@@ -35,10 +42,8 @@
     </h1>
     <div class="header-status">
       <div class="connection-status">
-        <span class="connection-dot" class:connected={$connectionStatus === 'connected'}></span>
-        <span class="connection-text">
-          {$connectionStatus === 'connected' ? 'Connected' : 'Disconnected'}
-        </span>
+        <span class="connection-dot" class:connected={statusConnected}></span>
+        <span class="connection-text">{statusText}</span>
       </div>
     </div>
   </header>

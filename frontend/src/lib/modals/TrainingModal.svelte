@@ -1,9 +1,33 @@
 <script>
+  import { onMount } from 'svelte';
   import Modal from '../components/Modal.svelte';
   import { closeModal, navigateTo } from '../stores/app.js';
+  import { currentOpening } from '../stores/training.js';
+  import { getOpenings, startTraining } from '../api.js';
+
+  let openings = [];
+  let loading = true;
+  let error = null;
+
+  onMount(async () => {
+    try {
+      const data = await getOpenings();
+      openings = data.openings || [];
+    } catch (e) {
+      error = e.message;
+    } finally {
+      loading = false;
+    }
+  });
 
   function handleClose() {
     closeModal();
+  }
+
+  async function handleSelectOpening(opening) {
+    closeModal();
+    currentOpening.set(opening);
+    navigateTo('training');
   }
 
   function handleStartTraining() {
@@ -15,34 +39,31 @@
 <Modal title="Train Openings" on:close={handleClose}>
   <div class="modal-body">
     <p class="description">
-      Practice your opening repertoire with guided hints. Master 5 key openings through progressive practice.
+      Select an opening to practice. Click any opening below to start training.
     </p>
 
-    <div class="opening-preview">
-      <div class="opening-item white">
-        <span class="name">London System</span>
-        <span class="color">White</span>
+    {#if loading}
+      <div class="loading">Loading openings...</div>
+    {:else if error}
+      <div class="error">{error}</div>
+    {:else}
+      <div class="opening-list">
+        {#each openings as opening}
+          <button
+            class="opening-item"
+            class:white={opening.color === 'white'}
+            class:black={opening.color === 'black'}
+            on:click={() => handleSelectOpening(opening)}
+          >
+            <span class="name">{opening.name}</span>
+            <span class="color-tag">{opening.color}</span>
+          </button>
+        {/each}
       </div>
-      <div class="opening-item white">
-        <span class="name">Queen's Gambit</span>
-        <span class="color">White</span>
-      </div>
-      <div class="opening-item black">
-        <span class="name">Caro-Kann Defense</span>
-        <span class="color">Black</span>
-      </div>
-      <div class="opening-item black">
-        <span class="name">Scandinavian Defense</span>
-        <span class="color">Black</span>
-      </div>
-      <div class="opening-item black">
-        <span class="name">King's Indian Defense</span>
-        <span class="color">Black</span>
-      </div>
-    </div>
+    {/if}
 
-    <button class="btn-primary" on:click={handleStartTraining}>
-      Start Training
+    <button class="btn-browse" on:click={handleStartTraining}>
+      Browse All Openings
     </button>
   </div>
 </Modal>
@@ -58,21 +79,41 @@
     line-height: 1.5;
   }
 
-  .opening-preview {
+  .loading, .error {
+    padding: 20px;
+    color: var(--text-muted);
+  }
+
+  .error {
+    color: var(--accent-red);
+  }
+
+  .opening-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
 
   .opening-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 14px;
+    padding: 14px 16px;
     background: var(--bg-tertiary);
+    border: 1px solid transparent;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+  }
+
+  .opening-item:hover {
+    background: var(--bg-primary);
+    border-color: var(--accent-green);
   }
 
   .opening-item.white {
@@ -80,32 +121,34 @@
   }
 
   .opening-item.black {
-    border-left: 3px solid #1e293b;
+    border-left: 3px solid #64748b;
   }
 
   .name {
     font-weight: 500;
   }
 
-  .color {
-    font-size: 0.75rem;
+  .color-tag {
+    font-size: 0.7rem;
     color: var(--text-muted);
     text-transform: uppercase;
+    background: var(--bg-secondary);
+    padding: 2px 8px;
+    border-radius: 4px;
   }
 
-  .btn-primary {
+  .btn-browse {
     width: 100%;
-    padding: 14px;
-    background: var(--accent-green);
-    border: none;
-    border-radius: 10px;
-    color: white;
-    font-size: 1rem;
-    font-weight: 600;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
     cursor: pointer;
   }
 
-  .btn-primary:hover {
-    background: #16a34a;
+  .btn-browse:hover {
+    background: var(--bg-tertiary);
   }
 </style>

@@ -48,6 +48,11 @@
 
   onMount(async () => {
     await loadData();
+
+    // Auto-start if opening was pre-selected from modal
+    if ($currentOpening && !$isTraining) {
+      await handleSelectOpening($currentOpening);
+    }
   });
 
   onDestroy(() => {
