@@ -28,7 +28,12 @@
 
   function handleContextMenu(e) {
     e.preventDefault();
-    dispatch('rightclick', { square });
+  }
+
+  function handleMouseDown(e) {
+    if (e.button === 2) {
+      dispatch('rightdown', { square });
+    }
   }
 
   function handleMouseUp(e) {
@@ -60,6 +65,7 @@
   on:dragover={handleDragOver}
   on:drop={handleDrop}
   on:contextmenu={handleContextMenu}
+  on:mousedown={handleMouseDown}
   on:mouseup={handleMouseUp}
   on:mouseenter={handleMouseEnter}
   role="button"

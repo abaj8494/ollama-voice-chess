@@ -119,16 +119,14 @@
     e.preventDefault();
   }
 
-  function handleSquareRightClick(e) {
+  function handleSquareRightDown(e) {
     if (!annotationsEnabled) return;
     const { square } = e.detail;
 
-    if (!isDrawingArrow) {
-      // Start drawing arrow or toggle highlight
-      isDrawingArrow = true;
-      arrowStart = square;
-      arrowEnd = square;
-    }
+    // Start drawing arrow or preparing for highlight
+    isDrawingArrow = true;
+    arrowStart = square;
+    arrowEnd = square;
   }
 
   function handleSquareRightUp(e) {
@@ -215,7 +213,7 @@
           {highlightColor}
           on:click={handleSquareClick}
           on:drop={handleDrop}
-          on:rightclick={handleSquareRightClick}
+          on:rightdown={handleSquareRightDown}
           on:rightup={handleSquareRightUp}
           on:mouseenter={() => handleSquareMouseEnter(square)}
         >
@@ -237,13 +235,13 @@
         {#each Object.entries(ANNOTATION_COLORS) as [colorName, colors]}
           <marker
             id="arrowhead-{colorName}"
-            markerWidth="4"
-            markerHeight="4"
-            refX="2"
-            refY="2"
+            markerWidth="3"
+            markerHeight="3"
+            refX="1.5"
+            refY="1.5"
             orient="auto"
           >
-            <polygon points="0 0, 4 2, 0 4" fill={colors.fill} />
+            <polygon points="0 0, 3 1.5, 0 3" fill={colors.fill} />
           </marker>
         {/each}
       </defs>
@@ -258,7 +256,7 @@
           x2={path.endX}
           y2={path.endY}
           stroke={colors.fill}
-          stroke-width="2.5"
+          stroke-width="1.5"
           stroke-linecap="round"
           marker-end="url(#arrowhead-{arrow.color})"
           class="arrow"
@@ -275,7 +273,7 @@
           x2={path.endX}
           y2={path.endY}
           stroke={colors.fill}
-          stroke-width="2.5"
+          stroke-width="1.5"
           stroke-linecap="round"
           marker-end="url(#arrowhead-{annotationColor})"
           class="arrow drawing"
