@@ -223,6 +223,8 @@
               draggable={interactive}
               on:dragstart={() => handleDragStart(square, piece)}
               on:dragend={handleDragEnd}
+              on:rightdown={() => handleSquareRightDown({ detail: { square }})}
+              on:rightup={() => handleSquareRightUp({ detail: { square }})}
             />
           {/if}
         </Square>

@@ -810,14 +810,17 @@ async def training_move(session_id: str, request: TrainingMoveRequest):
         opponent_move_to = None
         if session.current_move_index < len(opening.main_line):
             if expected_move.common_responses:
-                opponent_move = expected_move.common_responses[0]
-                try:
-                    move_result = game.make_move(opponent_move)
-                    if move_result:
-                        opponent_move_from = move_result.get('from')
-                        opponent_move_to = move_result.get('to')
-                except:
-                    pass  # Opponent move might not be valid in all positions
+                # Try each common response until one succeeds
+                for response in expected_move.common_responses:
+                    try:
+                        move_result = game.make_move(response)
+                        if move_result and move_result.get('success'):
+                            opponent_move = response
+                            opponent_move_from = move_result.get('from')
+                            opponent_move_to = move_result.get('to')
+                            break  # Found a valid move
+                    except:
+                        continue  # Try next response
 
         # Check if opening is complete
         is_complete = session.current_move_index >= len(opening.main_line)
@@ -1223,7 +1226,15 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
 
             elif msg_type == "move":
                 # Player makes a move (from drag-drop or click-to-move)
-                move_str = data.get("move", "")
+                # Accept either UCI "from+to" format or direct move string
+                move_from = data.get("from", "")
+                move_to = data.get("to", "")
+                promotion = data.get("promotion", "")
+
+                if move_from and move_to:
+                    move_str = move_from + move_to + (promotion or "")
+                else:
+                    move_str = data.get("move", "")
 
                 # Analyze the move BEFORE making it for blunder detection
                 blunder_feedback = None

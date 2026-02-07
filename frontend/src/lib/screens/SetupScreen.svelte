@@ -40,7 +40,7 @@
 
       // Set defaults
       if (models.length > 0) selectedModel = models[0];
-      if (voices.length > 0) selectedVoice = voices[0];
+      if (voices.length > 0) selectedVoice = voices[0].key;
     } catch (e) {
       error = e.message;
     }
@@ -124,7 +124,7 @@
           <option value="">Loading voices...</option>
         {:else}
           {#each voices as voice}
-            <option value={voice}>{voice}</option>
+            <option value={voice.key}>{voice.name}</option>
           {/each}
         {/if}
       </select>

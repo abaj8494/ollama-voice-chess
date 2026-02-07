@@ -34,12 +34,30 @@
   let currentAudio = null;
   let ws = null;
   let reconnectTimer = null;
+  let localFen = null; // For immediate player move display
+  let isSpeaking = false;
+  let moveHistory = []; // Array of { san, from, to, isPlayer }
+  let lastAIMove = null; // { from, to, san } for replay
+  let isReplaying = false;
+
+  // Voice recognition state
+  let recognition = null;
+  let isListening = false;
+  let alwaysOnMode = true; // Default to always-on
+  let silenceTimer = null;
+  let accumulatedTranscript = '';
 
   // Get the current state values
   $: orientation = $gameState.playerColor;
-  $: fen = $gameState.fen;
+  $: serverFen = $gameState.fen;
+  $: fen = localFen || serverFen; // Use localFen for immediate player move display
   $: turnText = $gameState.turn === 'white' ? 'White to move' : 'Black to move';
   $: isMyTurn = $isPlayerTurn;
+
+  // Clear localFen when server updates (after move confirmed)
+  $: if (serverFen && !isThinking) {
+    localFen = null;
+  }
 
   // Sync chess.js with FEN
   $: {
@@ -52,6 +70,11 @@
 
   onMount(() => {
     connectWebSocket();
+    initSpeechRecognition();
+    // Start listening if always-on mode is enabled by default
+    if (alwaysOnMode) {
+      setTimeout(() => startListening(), 500);
+    }
   });
 
   onDestroy(() => {
@@ -62,7 +85,150 @@
       clearTimeout(reconnectTimer);
     }
     stopSpeaking();
+    stopListening();
   });
+
+  // Voice recognition setup
+  function initSpeechRecognition() {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript = transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        accumulatedTranscript += finalTranscript;
+        // Set timer to submit after silence
+        silenceTimer = setTimeout(() => {
+          if (accumulatedTranscript.trim()) {
+            sendChat(accumulatedTranscript.trim());
+            accumulatedTranscript = '';
+          }
+        }, 1500);
+      }
+
+      // Update input with current transcript
+      chatInput = accumulatedTranscript + interimTranscript;
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech error:', event.error);
+      if (event.error === 'no-speech' && alwaysOnMode && !isSpeaking && !isThinking) {
+        restartListening();
+        return;
+      }
+      if (event.error === 'not-allowed') {
+        addMessage('system', 'Microphone access denied. Please allow and reload.');
+        alwaysOnMode = false;
+      }
+      if (event.error === 'aborted') return;
+      isListening = false;
+    };
+
+    recognition.onend = () => {
+      if (alwaysOnMode && !isSpeaking && !isThinking) {
+        setTimeout(() => {
+          if (alwaysOnMode && !isSpeaking && !isThinking) {
+            restartListening();
+          }
+        }, 100);
+      } else {
+        isListening = false;
+      }
+    };
+  }
+
+  function restartListening() {
+    if (!recognition || isSpeaking || isThinking) return;
+    try {
+      recognition.start();
+      isListening = true;
+    } catch (e) {
+      console.log('Recognition restart error:', e.message);
+    }
+  }
+
+  function startListening() {
+    if (!recognition || isThinking || isSpeaking) return;
+    stopSpeaking();
+    try {
+      recognition.start();
+      isListening = true;
+      accumulatedTranscript = '';
+    } catch (e) {
+      console.log('Start listening error:', e.message);
+    }
+  }
+
+  function stopListening() {
+    alwaysOnMode = false;
+    if (recognition) {
+      try { recognition.stop(); } catch (e) {}
+    }
+    isListening = false;
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    accumulatedTranscript = '';
+  }
+
+  function pauseListening() {
+    if (recognition && isListening) {
+      try { recognition.stop(); } catch (e) {}
+      isListening = false;
+    }
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    accumulatedTranscript = '';
+  }
+
+  function toggleMic() {
+    if (!recognition) {
+      initSpeechRecognition();
+      if (!recognition) {
+        addMessage('system', 'Speech recognition not supported');
+        return;
+      }
+    }
+
+    alwaysOnMode = !alwaysOnMode;
+    if (alwaysOnMode) {
+      startListening();
+    } else {
+      stopListening();
+    }
+  }
+
+  function resumeListeningIfAlwaysOn() {
+    if (alwaysOnMode && !isSpeaking && !isThinking) {
+      startListening();
+    }
+  }
 
   function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -108,6 +274,13 @@
           updateGameState(data.result.state);
           if (data.result.move_from && data.result.move_to) {
             lastMove.set({ from: data.result.move_from, to: data.result.move_to });
+            // Track player move in history
+            moveHistory = [...moveHistory, {
+              san: data.result.move,
+              from: data.result.move_from,
+              to: data.result.move_to,
+              isPlayer: true
+            }];
           }
         } else {
           addMessage('system', data.result.error);
@@ -125,6 +298,14 @@
         }
         if (data.move_from && data.move_to) {
           lastMove.set({ from: data.move_from, to: data.move_to });
+          // Track AI move for replay and history
+          lastAIMove = { from: data.move_from, to: data.move_to, san: data.move };
+          moveHistory = [...moveHistory, {
+            san: data.move,
+            from: data.move_from,
+            to: data.move_to,
+            isPlayer: false
+          }];
         }
         addMessage('assistant', data.message, data.move);
         if (data.blunder_feedback) {
@@ -227,14 +408,20 @@
       }
     }
 
+    // Show move immediately on the board (optimistic update)
+    const move = chess.move({ from, to, promotion: promotion || undefined });
+    if (move) {
+      localFen = chess.fen();
+      lastMove.set({ from, to });
+    }
+
+    // Send to server
     send({
       type: 'move',
       from,
       to,
       promotion,
     });
-
-    lastMove.set({ from, to });
   }
 
   // Chat
@@ -266,6 +453,8 @@
     if (!$settings.voiceEnabled) return;
 
     stopSpeaking();
+    pauseListening(); // Stop listening while speaking
+    isSpeaking = true;
 
     try {
       const response = await fetch('/api/tts', {
@@ -278,10 +467,22 @@
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         currentAudio = new Audio(url);
+
+        currentAudio.onended = () => {
+          isSpeaking = false;
+          currentAudio = null;
+          resumeListeningIfAlwaysOn();
+        };
+
         await currentAudio.play();
+      } else {
+        isSpeaking = false;
+        resumeListeningIfAlwaysOn();
       }
     } catch (e) {
       console.error('TTS error:', e);
+      isSpeaking = false;
+      resumeListeningIfAlwaysOn();
     }
   }
 
@@ -291,11 +492,40 @@
       currentAudio.currentTime = 0;
       currentAudio = null;
     }
+    isSpeaking = false;
+  }
+
+  function skipSpeaking() {
+    // Skip current speech but don't disable TTS permanently
+    stopSpeaking();
+    resumeListeningIfAlwaysOn();
+  }
+
+  function replayLastMove() {
+    if (!lastAIMove || isReplaying) return;
+
+    isReplaying = true;
+
+    // Temporarily clear the last move highlight
+    const currentLastMove = $lastMove;
+    lastMove.set(null);
+
+    // Flash the squares
+    setTimeout(() => {
+      lastMove.set({ from: lastAIMove.from, to: lastAIMove.to });
+      isReplaying = false;
+    }, 200);
   }
 
   // Actions
   function handleUndo() {
     send({ type: 'undo' });
+    // Remove last 2 moves from history (player + AI)
+    if (moveHistory.length >= 2) {
+      moveHistory = moveHistory.slice(0, -2);
+    } else {
+      moveHistory = [];
+    }
   }
 
   function handleHint() {
@@ -346,6 +576,24 @@
       </div>
     </div>
 
+    <!-- Moves list strip -->
+    <div class="moves-strip">
+      {#if moveHistory.length === 0}
+        <span class="moves-placeholder">Moves will appear here...</span>
+      {:else}
+        <div class="moves-scroll">
+          {#each moveHistory as move, i}
+            {#if i % 2 === 0}
+              <span class="move-number">{Math.floor(i / 2) + 1}.</span>
+            {/if}
+            <span class="move-san" class:player={move.isPlayer} class:ai={!move.isPlayer}>
+              {move.san}
+            </span>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
     <ChessBoard
       position={fen}
       {orientation}
@@ -392,14 +640,54 @@
       <div class="header-controls">
         <button
           class="icon-btn"
+          class:active={alwaysOnMode}
+          class:listening={isListening}
+          on:click={toggleMic}
+          title={alwaysOnMode ? 'Disable voice input' : 'Enable voice input (always-on)'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
           class:active={$settings.voiceEnabled}
           on:click={toggleVoice}
           title={$settings.voiceEnabled ? 'Mute voice' : 'Enable voice'}
         >
-          {$settings.voiceEnabled ? '🔊' : '🔇'}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            {#if $settings.voiceEnabled}
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            {:else}
+              <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+            {/if}
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          on:click={skipSpeaking}
+          disabled={!isSpeaking}
+          title="Skip current speech"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          on:click={replayLastMove}
+          disabled={!lastAIMove || isReplaying}
+          title="Replay last AI move"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+          </svg>
         </button>
         <button class="icon-btn" on:click={handleNewGame} title="New Game">
-          🆕
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -467,6 +755,68 @@
     width: 100%;
     max-width: 520px;
     padding: 8px 0;
+  }
+
+  .moves-strip {
+    width: 100%;
+    max-width: 520px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+
+  .moves-placeholder {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
+  }
+
+  .moves-scroll {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .moves-scroll::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .moves-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+  }
+
+  .move-number {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 2px;
+  }
+
+  .move-san {
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: default;
+  }
+
+  .move-san.player {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--accent-blue);
+  }
+
+  .move-san.ai {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
   }
 
   .turn-indicator {
@@ -571,6 +921,17 @@
   .icon-btn.active {
     background: var(--accent-blue);
     border-color: var(--accent-blue);
+  }
+
+  .icon-btn.listening {
+    background: var(--accent-red);
+    border-color: var(--accent-red);
+    animation: pulse-mic 1s infinite;
+  }
+
+  @keyframes pulse-mic {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
   }
 
   .messages {

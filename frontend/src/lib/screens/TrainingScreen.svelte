@@ -45,8 +45,166 @@
   let localFen = null; // For immediate display of player moves
   let chatInput = '';
   let isAiThinking = false;
+  let isListening = false;
+  let alwaysOnMode = true; // Default to always-on
+  let recognition = null;
+  let silenceTimer = null;
+  let accumulatedTranscript = '';
+  let isSpeaking = false;
 
   const AI_MOVE_DELAY = 800; // ms delay for AI moves
+
+  // Initialize speech recognition if available
+  function initSpeechRecognition() {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript = transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        accumulatedTranscript += finalTranscript;
+        // Set timer to submit after silence
+        silenceTimer = setTimeout(() => {
+          if (accumulatedTranscript.trim()) {
+            chatInput = accumulatedTranscript.trim();
+            handleChatSubmit();
+            accumulatedTranscript = '';
+          }
+        }, 1500);
+      }
+
+      // Update input with current transcript
+      chatInput = accumulatedTranscript + interimTranscript;
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'no-speech' && alwaysOnMode && !isSpeaking && !isAiThinking) {
+        restartListening();
+        return;
+      }
+      if (event.error === 'not-allowed') {
+        addTrainingMessage('error', 'Microphone access denied');
+        alwaysOnMode = false;
+      }
+      if (event.error === 'aborted') return;
+      isListening = false;
+    };
+
+    recognition.onend = () => {
+      if (alwaysOnMode && !isSpeaking && !isAiThinking) {
+        setTimeout(() => {
+          if (alwaysOnMode && !isSpeaking && !isAiThinking) {
+            restartListening();
+          }
+        }, 100);
+      } else {
+        isListening = false;
+      }
+    };
+  }
+
+  function restartListening() {
+    if (!recognition || isSpeaking || isAiThinking) return;
+    try {
+      recognition.start();
+      isListening = true;
+    } catch (e) {
+      console.log('Recognition restart error:', e.message);
+    }
+  }
+
+  function startListening() {
+    if (!recognition || isAiThinking || isSpeaking) return;
+    stopCurrentSpeaking();
+    try {
+      recognition.start();
+      isListening = true;
+      accumulatedTranscript = '';
+    } catch (e) {
+      console.log('Start listening error:', e.message);
+    }
+  }
+
+  function stopListening() {
+    alwaysOnMode = false;
+    if (recognition) {
+      try { recognition.stop(); } catch (e) {}
+    }
+    isListening = false;
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    accumulatedTranscript = '';
+  }
+
+  function pauseListening() {
+    if (recognition && isListening) {
+      try { recognition.stop(); } catch (e) {}
+      isListening = false;
+    }
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    accumulatedTranscript = '';
+  }
+
+  function toggleListening() {
+    if (!recognition) {
+      initSpeechRecognition();
+      if (!recognition) {
+        addTrainingMessage('error', 'Speech recognition not supported in this browser');
+        return;
+      }
+    }
+
+    alwaysOnMode = !alwaysOnMode;
+    if (alwaysOnMode) {
+      startListening();
+    } else {
+      stopListening();
+    }
+  }
+
+  function resumeListeningIfAlwaysOn() {
+    if (alwaysOnMode && !isSpeaking && !isAiThinking) {
+      startListening();
+    }
+  }
+
+  function stopCurrentSpeaking() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+    isSpeaking = false;
+  }
 
   function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -81,15 +239,22 @@
 
   onMount(async () => {
     await loadData();
+    initSpeechRecognition();
 
     // Auto-start if opening was pre-selected from modal
     if ($currentOpening && !$isTraining) {
       await handleSelectOpening($currentOpening);
     }
+
+    // Start listening if always-on mode is enabled by default
+    if (alwaysOnMode) {
+      setTimeout(() => startListening(), 500);
+    }
   });
 
   onDestroy(() => {
     stopSpeaking();
+    stopListening();
   });
 
   async function loadData() {
@@ -296,6 +461,8 @@
     if (!$trainingVoiceEnabled) return;
 
     stopSpeaking();
+    pauseListening(); // Stop listening while speaking
+    isSpeaking = true;
 
     try {
       const response = await fetch('/api/tts', {
@@ -308,10 +475,22 @@
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         currentAudio = new Audio(url);
+
+        currentAudio.onended = () => {
+          isSpeaking = false;
+          currentAudio = null;
+          resumeListeningIfAlwaysOn();
+        };
+
         await currentAudio.play();
+      } else {
+        isSpeaking = false;
+        resumeListeningIfAlwaysOn();
       }
     } catch (e) {
       console.error('TTS error:', e);
+      isSpeaking = false;
+      resumeListeningIfAlwaysOn();
     }
   }
 
@@ -545,6 +724,16 @@
         </div>
 
         <div class="chat-input-area">
+          <button
+            class="mic-btn"
+            class:active={alwaysOnMode}
+            class:listening={isListening}
+            on:click={toggleListening}
+            disabled={isAiThinking}
+            title={alwaysOnMode ? 'Disable voice input' : 'Enable voice input (always-on)'}
+          >
+            {isListening ? '🔴' : '🎤'}
+          </button>
           <input
             type="text"
             placeholder="Ask about this position..."
@@ -639,6 +828,7 @@
     text-align: left;
     cursor: pointer;
     transition: all 0.2s;
+    color: var(--text-primary);
   }
 
   .opening-card:hover {
@@ -949,6 +1139,46 @@
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
     margin-top: auto;
+  }
+
+  .mic-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .mic-btn:hover:not(:disabled) {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+
+  .mic-btn.active {
+    background: var(--accent-green);
+    border-color: var(--accent-green);
+  }
+
+  .mic-btn.listening {
+    background: var(--accent-red);
+    border-color: var(--accent-red);
+    animation: pulse-mic 1s infinite;
+  }
+
+  .mic-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @keyframes pulse-mic {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
   }
 
   .chat-input-area input {

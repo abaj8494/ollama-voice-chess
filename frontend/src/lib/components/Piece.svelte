@@ -23,6 +23,28 @@
   function handleDragEnd(e) {
     dispatch('dragend', { piece });
   }
+
+  function handleMouseDown(e) {
+    // For right-clicks, dispatch event to parent and prevent default
+    if (e.button === 2) {
+      e.preventDefault();
+      // Dispatch custom event for right-click (annotation)
+      dispatch('rightdown', { button: 2 });
+    }
+  }
+
+  function handleMouseUp(e) {
+    // For right-clicks, dispatch event to parent
+    if (e.button === 2) {
+      e.preventDefault();
+      dispatch('rightup', { button: 2 });
+    }
+  }
+
+  function handleContextMenu(e) {
+    // Prevent browser context menu on pieces
+    e.preventDefault();
+  }
 </script>
 
 {#if pieceAsset}
@@ -34,6 +56,9 @@
     draggable={draggable}
     on:dragstart={handleDragStart}
     on:dragend={handleDragEnd}
+    on:mousedown={handleMouseDown}
+    on:mouseup={handleMouseUp}
+    on:contextmenu={handleContextMenu}
   />
 {/if}
 
