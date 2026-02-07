@@ -108,11 +108,8 @@
       // Set hint from current_hint field
       if (result.current_hint) {
         currentHint.set(result.current_hint);
-        // Speak the hint explanation
-        const hintText = result.current_hint.explanation ||
-          (result.current_hint.move ? `Play ${result.current_hint.move}` : 'Your move');
         if ($trainingVoiceEnabled) {
-          speak(hintText);
+          speak(buildHintSpeech(result.current_hint));
         }
       }
     } catch (e) {
@@ -207,8 +204,8 @@
       // Set next hint
       if (result.next_hint) {
         currentHint.set(result.next_hint);
-        if ($trainingVoiceEnabled && result.next_hint.explanation) {
-          speak(result.next_hint.explanation);
+        if ($trainingVoiceEnabled) {
+          speak(buildHintSpeech(result.next_hint));
         }
       } else {
         currentHint.set(null);
@@ -289,6 +286,21 @@
     if (mastery >= 0.7) return 'Proficient';
     if (mastery >= 0.4) return 'Learning';
     return 'Beginner';
+  }
+
+  function buildHintSpeech(hint) {
+    if (!hint) return 'Your move';
+
+    const parts = [];
+    if (hint.move) {
+      parts.push(`Play ${hint.move}`);
+    } else if (hint.piece_hint) {
+      parts.push(`Move your ${hint.piece_hint}`);
+    }
+    if (hint.explanation) {
+      parts.push(hint.explanation);
+    }
+    return parts.length > 0 ? parts.join('. ') : 'Your move';
   }
 
   function handleToggleHighlight(e) {
@@ -422,7 +434,7 @@
             {#if $trainingMessages.length === 0}
               <div class="feedback-empty">Make a move to see feedback</div>
             {:else}
-              {#each $trainingMessages.slice(-5) as msg (msg.id)}
+              {#each [...$trainingMessages].slice(-5).reverse() as msg (msg.id)}
                 <div class="feedback-item {msg.type}">
                   {msg.message}
                 </div>
