@@ -348,21 +348,23 @@
       font-size: 1.1rem;
     }
 
-    /* Selected square highlight for click-to-move */
+    /* Selected square highlight for click-to-move - lichess style */
     .highlight-selected {
-      box-shadow: inset 0 0 0 4px var(--accent-blue) !important;
+      background-color: rgba(20, 85, 30, 0.5) !important;
     }
 
     .highlight-legal {
-      background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 25%, transparent 25%) !important;
+      background-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.2) 22%, transparent 22%) !important;
+      background-size: 100% 100% !important;
     }
 
     .highlight-capture {
-      background: radial-gradient(circle, transparent 50%, rgba(239, 68, 68, 0.5) 50%) !important;
+      background-image: radial-gradient(circle at center, transparent 0%, transparent 40%, rgba(0, 0, 0, 0.15) 40%, rgba(0, 0, 0, 0.15) 48%, transparent 48%) !important;
+      background-size: 100% 100% !important;
     }
 
     .highlight-last-move {
-      background-color: rgba(234, 179, 8, 0.4) !important;
+      background-color: rgba(155, 199, 0, 0.4) !important;
     }
 
     /* Pre-move highlights (orange/amber for queued moves) */
@@ -3601,7 +3603,6 @@
         draggable: true,
         onDragStart: onTrainingDragStart,
         onDrop: onTrainingDrop,
-        onSnapEnd: onTrainingSnapEnd,
         pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
       });
 
@@ -3619,6 +3620,12 @@
       if (!boardEl) return;
 
       boardEl.addEventListener('click', function(e) {
+        // Skip if this was a drag operation
+        if (trainingIsDragging) {
+          trainingIsDragging = false;
+          return;
+        }
+
         // ChessboardJS uses classes like 'square-e4', not data-square attributes
         const squareEl = e.target.closest('.square-55d63');
         if (!squareEl) return;
@@ -3629,7 +3636,7 @@
         if (!squareClass) return;
 
         const square = squareClass.substring(7); // Remove 'square-' prefix
-        setTimeout(() => handleTrainingSquareClick(square), 0);
+        handleTrainingSquareClick(square);
       });
     }
 
@@ -3720,6 +3727,8 @@
       }
     }
 
+    let trainingIsDragging = false;
+
     function onTrainingDragStart(source, piece, position, orientation) {
       // Don't allow moves if session is complete
       if (!trainingSession) return false;
@@ -3731,13 +3740,19 @@
       if (trainingSession.player_color === 'white' && isBlackPiece) return false;
       if (trainingSession.player_color === 'black' && isWhitePiece) return false;
 
+      // Clear any click selection when starting a drag
+      clearTrainingSelection();
+      trainingIsDragging = true;
+
       return true;
     }
 
     let trainingMoveInProgress = false;
 
     function onTrainingDrop(source, target, piece, newPos, oldPos, orientation) {
-      // Ignore same-square drops (clicks)
+      trainingIsDragging = false;
+
+      // Ignore same-square drops (clicks) - let click handler deal with it
       if (source === target) {
         return 'snapback';
       }
@@ -4239,6 +4254,12 @@ Keep your answer brief and helpful.`;
     }
 
     function handleReviewBoardClick(e) {
+      // Skip if this was a drag operation
+      if (reviewIsDragging) {
+        reviewIsDragging = false;
+        return;
+      }
+
       // ChessboardJS uses classes like 'square-e4', not data-square attributes
       const squareEl = e.target.closest('.square-55d63');
       if (!squareEl) return;
@@ -4249,7 +4270,7 @@ Keep your answer brief and helpful.`;
       if (!squareClass) return;
 
       const square = squareClass.substring(7); // Remove 'square-' prefix
-      setTimeout(() => handleReviewSquareClick(square), 0);
+      handleReviewSquareClick(square);
     }
 
     function handleReviewSquareClick(square) {
@@ -4336,12 +4357,26 @@ Keep your answer brief and helpful.`;
       }
     }
 
+    let reviewIsDragging = false;
+
     function onReviewDragStart(source, piece, position, orientation) {
       if (!reviewSession) return false;
+
+      // Clear any click selection when starting a drag
+      clearReviewSelection();
+      reviewIsDragging = true;
+
       return true;
     }
 
     function onReviewDrop(source, target, piece, newPos, oldPos, orientation) {
+      reviewIsDragging = false;
+
+      // Ignore same-square drops (clicks) - let click handler deal with it
+      if (source === target) {
+        return 'snapback';
+      }
+
       // Build move in various formats to try matching
       const pieceType = piece.charAt(1).toUpperCase();
       let sanMove;
