@@ -42,6 +42,9 @@
   let lastMove = null;
   let currentAudio = null;
   let isOpponentMoving = false;
+  let localFen = null; // For immediate display of player moves
+  let chatInput = '';
+  let isAiThinking = false;
 
   const AI_MOVE_DELAY = 800; // ms delay for AI moves
 
@@ -65,8 +68,14 @@
 
   // Extract state from training session - API returns state.fen, not fen directly
   $: sessionState = $trainingSession?.state || {};
-  $: fen = sessionState?.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  $: sessionFen = sessionState?.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  $: fen = localFen || sessionFen; // Use localFen for immediate player move display
   $: orientation = $trainingSession?.player_color || $currentOpening?.color || 'white';
+
+  // Sync localFen with session when session updates
+  $: if (sessionFen && !isOpponentMoving) {
+    localFen = null; // Clear localFen when session catches up
+  }
 
   // Calculate whose turn based on FEN and player color
   $: fenTurn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
@@ -210,6 +219,7 @@
     if (!move) return;
 
     lastMove = { from, to };
+    localFen = chess.fen(); // Show player's move immediately
 
     try {
       const result = await submitTrainingMove($trainingSession.session_id, move.san);
@@ -220,18 +230,35 @@
         // Show opponent's response with delay
         if (result.opponent_move && result.state?.fen) {
           isOpponentMoving = true;
-          addTrainingMessage('info', `Opponent plays: ${result.opponent_move}`);
 
-          // Get the FEN before opponent's move to parse it correctly
+          // First, get the position BEFORE opponent's move for parsing
           const fenBeforeOpponent = chess.fen();
           const moveSquares = parseMoveSquares(result.opponent_move, fenBeforeOpponent);
 
+          // Show message and wait
+          addTrainingMessage('info', `Opponent plays: ${result.opponent_move}`);
           await delay(AI_MOVE_DELAY);
+
+          // Now update the board with opponent's move
+          if (result.state) {
+            trainingSession.update(s => ({
+              ...s,
+              state: result.state,
+              current_move_index: result.current_move_index,
+            }));
+          }
 
           if (moveSquares) {
             lastMove = moveSquares;
           }
           isOpponentMoving = false;
+        } else if (result.state) {
+          // No opponent move, just update state
+          trainingSession.update(s => ({
+            ...s,
+            state: result.state,
+            current_move_index: result.current_move_index,
+          }));
         }
       } else {
         addTrainingMessage('error', result.message || 'Not quite...');
@@ -240,15 +267,7 @@
         }
         // Undo the incorrect move locally
         chess.undo();
-      }
-
-      // Update session state with new position
-      if (result.state) {
-        trainingSession.update(s => ({
-          ...s,
-          state: result.state,
-          current_move_index: result.current_move_index,
-        }));
+        localFen = chess.fen(); // Reset display to before the incorrect move
       }
 
       // Set next hint
@@ -353,6 +372,49 @@
       parts.push(hint.explanation);
     }
     return parts.length > 0 ? parts.join('. ') : 'Your move';
+  }
+
+  async function handleChatSubmit() {
+    if (!chatInput.trim() || isAiThinking) return;
+
+    const question = chatInput.trim();
+    chatInput = '';
+
+    addTrainingMessage('user', question);
+    isAiThinking = true;
+
+    try {
+      const response = await fetch('/api/training/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: $trainingSession?.session_id,
+          message: question,
+          fen: fen,
+          opening_name: $currentOpening?.name,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        addTrainingMessage('assistant', data.response);
+        if ($trainingVoiceEnabled && data.response) {
+          speak(data.response);
+        }
+      } else {
+        addTrainingMessage('error', 'Failed to get response');
+      }
+    } catch (e) {
+      addTrainingMessage('error', e.message);
+    } finally {
+      isAiThinking = false;
+    }
+  }
+
+  function handleChatKeypress(e) {
+    if (e.key === 'Enter') {
+      handleChatSubmit();
+    }
   }
 
   function handleToggleHighlight(e) {
@@ -492,7 +554,25 @@
                 </div>
               {/each}
             {/if}
+            {#if isAiThinking}
+              <div class="feedback-item assistant thinking">
+                <span class="dots"><span></span><span></span><span></span></span>
+              </div>
+            {/if}
           </div>
+        </div>
+
+        <div class="chat-input-area">
+          <input
+            type="text"
+            placeholder="Ask about this position..."
+            bind:value={chatInput}
+            on:keypress={handleChatKeypress}
+            disabled={isAiThinking}
+          />
+          <button class="send-btn" on:click={handleChatSubmit} disabled={isAiThinking}>
+            Ask
+          </button>
         </div>
       </div>
     </div>
@@ -846,6 +926,85 @@
   .feedback-item.info {
     background: rgba(148, 163, 184, 0.2);
     color: var(--text-secondary);
+  }
+
+  .feedback-item.user {
+    background: var(--accent-blue);
+    color: white;
+    align-self: flex-end;
+    max-width: 85%;
+  }
+
+  .feedback-item.assistant {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .feedback-item.thinking .dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .feedback-item.thinking .dots span {
+    width: 6px;
+    height: 6px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out;
+  }
+
+  .feedback-item.thinking .dots span:nth-child(1) { animation-delay: -0.32s; }
+  .feedback-item.thinking .dots span:nth-child(2) { animation-delay: -0.16s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+  }
+
+  .chat-input-area {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+  }
+
+  .chat-input-area input {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+  }
+
+  .chat-input-area input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .chat-input-area input:disabled {
+    opacity: 0.6;
+  }
+
+  .send-btn {
+    padding: 10px 16px;
+    background: var(--accent-blue);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .send-btn:hover:not(:disabled) {
+    background: #2563eb;
+  }
+
+  .send-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .loading,

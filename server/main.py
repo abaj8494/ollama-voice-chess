@@ -917,6 +917,44 @@ async def get_training_state(session_id: str):
     }
 
 
+class TrainingChatRequest(BaseModel):
+    session_id: Optional[str] = None
+    message: str
+    fen: str
+    opening_name: Optional[str] = None
+
+
+@app.post("/api/training/chat")
+async def training_chat(request: TrainingChatRequest):
+    """Chat with AI about the current training position."""
+    from anthropic import Anthropic
+
+    client = Anthropic()
+
+    # Build context about the position
+    opening_context = f"The user is studying the {request.opening_name}. " if request.opening_name else ""
+
+    system_prompt = f"""You are a helpful chess coach. {opening_context}
+The current position (FEN): {request.fen}
+
+Provide clear, concise explanations about chess positions, moves, and strategy.
+Focus on teaching concepts rather than just giving answers.
+Keep responses brief (2-3 sentences) unless a detailed explanation is needed."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=300,
+            system=system_prompt,
+            messages=[{"role": "user", "content": request.message}]
+        )
+
+        return {"response": response.content[0].text}
+    except Exception as e:
+        logger.error(f"Training chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== REVIEW MODE ENDPOINTS ====================
 
 @app.get("/api/review/stats")
