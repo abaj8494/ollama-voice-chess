@@ -31,6 +31,17 @@ from .stats import (
 )
 from .analysis import check_blunder, analyze_game, get_position_assessment
 from .tactics import analyze_tactics, get_tactical_summary
+from .openings import OPENINGS, get_opening_by_id, get_all_openings
+from .training import (
+    TrainingSession, TrainingStats, TrainingProgress,
+    load_training_stats, save_training_stats, calculate_hint_level,
+    get_piece_hint, record_training_session, ensure_training_games_dir,
+    TRAINING_GAMES_DIR
+)
+from .spaced_repetition import (
+    ReviewCard, ReviewSession, CardType,
+    get_review_manager, generate_opening_review_cards
+)
 
 # Configure logging
 logging.basicConfig(
@@ -43,6 +54,8 @@ logger = logging.getLogger(__name__)
 # Global state
 games: dict[str, ChessGame] = {}
 ollama_client: Optional[OllamaClient] = None
+training_sessions: dict[str, TrainingSession] = {}
+review_sessions: dict[str, ReviewSession] = {}
 
 # Games directory for PGN files
 GAMES_DIR = Path(__file__).parent.parent / "games"
@@ -140,6 +153,23 @@ class SaveGameRequest(BaseModel):
 class GameResultRequest(BaseModel):
     result: str  # "win", "loss", "draw"
     name: Optional[str] = None
+
+
+class StartTrainingRequest(BaseModel):
+    opening_id: str
+
+
+class TrainingMoveRequest(BaseModel):
+    move: str
+
+
+class StartReviewRequest(BaseModel):
+    card_limit: int = 20
+    card_type: Optional[str] = None
+
+
+class ReviewAnswerRequest(BaseModel):
+    move: str
 
 
 # REST endpoints
@@ -561,6 +591,502 @@ async def get_pgn(game_id: str):
     return {"pgn": game.get_pgn()}
 
 
+# ==================== TRAINING MODE ENDPOINTS ====================
+
+@app.get("/api/openings")
+async def list_openings():
+    """List all available openings with progress info."""
+    stats = load_training_stats()
+    result = []
+    for opening in get_all_openings():
+        progress = stats.get_opening_progress(opening.id)
+        result.append({
+            "id": opening.id,
+            "name": opening.name,
+            "color": opening.color.value,
+            "response_to": opening.response_to,
+            "description": opening.description,
+            "move_count": len(opening.main_line),
+            "mastery_level": progress.mastery_level,
+            "sessions_completed": progress.sessions_completed,
+            "average_accuracy": progress.average_accuracy,
+        })
+    return {"openings": result}
+
+
+@app.get("/api/openings/{opening_id}")
+async def get_opening_details(opening_id: str):
+    """Get details for a specific opening."""
+    opening = get_opening_by_id(opening_id)
+    if not opening:
+        raise HTTPException(status_code=404, detail="Opening not found")
+
+    stats = load_training_stats()
+    progress = stats.get_opening_progress(opening_id)
+
+    return {
+        "opening": {
+            "id": opening.id,
+            "name": opening.name,
+            "color": opening.color.value,
+            "response_to": opening.response_to,
+            "description": opening.description,
+            "main_line": [
+                {
+                    "move": m.move_san,
+                    "explanation": m.explanation,
+                    "common_responses": m.common_responses,
+                }
+                for m in opening.main_line
+            ],
+            "typical_plans": opening.typical_plans,
+            "key_squares": opening.key_squares,
+        },
+        "progress": {
+            "sessions_completed": progress.sessions_completed,
+            "moves_practiced": progress.moves_practiced,
+            "average_accuracy": progress.average_accuracy,
+            "mastery_level": progress.mastery_level,
+            "current_hint_level": progress.current_hint_level,
+        }
+    }
+
+
+@app.get("/api/training/stats")
+async def get_training_stats():
+    """Get overall training statistics."""
+    stats = load_training_stats()
+    return {
+        "total_sessions": stats.total_sessions,
+        "total_moves_practiced": stats.total_moves_practiced,
+        "sessions_today": stats.sessions_today,
+        "daily_goal": stats.daily_goal,
+        "openings_progress": {
+            op_id: {
+                "mastery_level": p.mastery_level,
+                "accuracy": p.average_accuracy,
+                "sessions": p.sessions_completed,
+            }
+            for op_id, p in stats.opening_progress.items()
+        }
+    }
+
+
+@app.post("/api/training/start")
+async def start_training(request: StartTrainingRequest):
+    """Start a new training session for an opening."""
+    opening = get_opening_by_id(request.opening_id)
+    if not opening:
+        raise HTTPException(status_code=404, detail="Opening not found")
+
+    stats = load_training_stats()
+    progress = stats.get_opening_progress(request.opening_id)
+    hint_level = calculate_hint_level(progress)
+
+    # Create session
+    from datetime import datetime
+    session_id = f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    session = TrainingSession(
+        session_id=session_id,
+        opening_id=request.opening_id,
+        player_color=opening.color.value,
+        hint_level=hint_level,
+    )
+    training_sessions[session_id] = session
+
+    # Create a game for this training session
+    game = ChessGame()
+    game.new_game(opening.color.value)
+    games[session_id] = game
+
+    # If player is Black, AI needs to play White's first move
+    if opening.color.value == "black" and opening.response_to:
+        first_move = opening.response_to  # "e4" or "d4"
+        game.make_move(first_move)
+        session.opponent_first_move = first_move
+
+    # Get first hint for player
+    first_hint = None
+    if session.current_move_index < len(opening.main_line):
+        move_info = opening.main_line[session.current_move_index]
+        first_hint = {
+            "move": move_info.move_san if hint_level == "full" else None,
+            "piece_hint": get_piece_hint(move_info.move_san) if hint_level == "partial" else None,
+            "explanation": move_info.explanation,
+            "level": hint_level,
+        }
+
+    # Generate review cards for this opening if they don't exist
+    generate_opening_review_cards(request.opening_id)
+
+    logger.info(f"Training session started: {session_id} for {opening.name}")
+    return {
+        "session_id": session_id,
+        "opening": opening.name,
+        "player_color": opening.color.value,
+        "hint_level": hint_level,
+        "state": game.state.to_dict(),
+        "current_hint": first_hint,
+        "total_moves": len(opening.main_line),
+        "current_move_index": 0,
+    }
+
+
+@app.post("/api/training/{session_id}/move")
+async def training_move(session_id: str, request: TrainingMoveRequest):
+    """Make a move in a training session."""
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Training session not found")
+
+    session = training_sessions[session_id]
+    game = games.get(session_id)
+    opening = get_opening_by_id(session.opening_id)
+
+    if not game or not opening:
+        raise HTTPException(status_code=404, detail="Game or opening not found")
+
+    # Check if we're past the opening moves
+    if session.current_move_index >= len(opening.main_line):
+        return {
+            "correct": True,
+            "message": "Opening complete! Well done.",
+            "is_complete": True,
+            "progress": 1.0,
+            "state": game.state.to_dict(),
+        }
+
+    expected_move = opening.main_line[session.current_move_index]
+    user_move = request.move.strip()
+
+    # Check if move is correct (allow some flexibility)
+    is_correct = user_move == expected_move.move_san
+
+    if is_correct:
+        session.correct_moves += 1
+        result = game.make_move(user_move)
+        session.moves_played.append(user_move)
+        session.current_move_index += 1
+
+        # Make opponent's response if available and not at end
+        opponent_move = None
+        if session.current_move_index < len(opening.main_line):
+            if expected_move.common_responses:
+                opponent_move = expected_move.common_responses[0]
+                try:
+                    game.make_move(opponent_move)
+                except:
+                    pass  # Opponent move might not be valid in all positions
+
+        # Check if opening is complete
+        is_complete = session.current_move_index >= len(opening.main_line)
+
+        # Get next hint
+        next_hint = None
+        if not is_complete and session.current_move_index < len(opening.main_line):
+            next_move = opening.main_line[session.current_move_index]
+            next_hint = {
+                "move": next_move.move_san if session.hint_level == "full" else None,
+                "piece_hint": get_piece_hint(next_move.move_san) if session.hint_level == "partial" else None,
+                "explanation": next_move.explanation,
+                "level": session.hint_level,
+            }
+
+        return {
+            "correct": True,
+            "message": "Correct! " + expected_move.explanation,
+            "opponent_move": opponent_move,
+            "state": game.state.to_dict(),
+            "next_hint": next_hint,
+            "is_complete": is_complete,
+            "progress": session.current_move_index / len(opening.main_line),
+            "current_move_index": session.current_move_index,
+        }
+    else:
+        session.incorrect_moves += 1
+        return {
+            "correct": False,
+            "message": f"Not quite. The correct move is {expected_move.move_san}. {expected_move.explanation}",
+            "expected_move": expected_move.move_san,
+            "explanation": expected_move.explanation,
+            "state": game.state.to_dict(),
+            "progress": session.current_move_index / len(opening.main_line),
+            "is_complete": False,
+        }
+
+
+@app.post("/api/training/{session_id}/complete")
+async def complete_training(session_id: str):
+    """Complete a training session and record stats."""
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Training session not found")
+
+    session = training_sessions[session_id]
+    game = games.get(session_id)
+
+    # Save the training game
+    if game:
+        ensure_training_games_dir()
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{session.opening_id}_{timestamp}.pgn"
+        filepath = TRAINING_GAMES_DIR / filename
+        pgn_content = game.get_pgn()
+        filepath.write_text(pgn_content)
+        logger.info(f"Training game saved: {filepath}")
+
+    # Update training stats
+    stats = load_training_stats()
+    progress = record_training_session(session, stats)
+
+    # Cleanup
+    del training_sessions[session_id]
+    if session_id in games:
+        del games[session_id]
+
+    logger.info(f"Training session completed: {session_id}, accuracy: {session.accuracy:.0%}")
+    return {
+        "session_accuracy": session.accuracy,
+        "correct_moves": session.correct_moves,
+        "incorrect_moves": session.incorrect_moves,
+        "new_mastery_level": progress.mastery_level,
+        "new_hint_level": progress.current_hint_level,
+        "sessions_today": stats.sessions_today,
+        "daily_goal": stats.daily_goal,
+    }
+
+
+@app.get("/api/training/{session_id}/state")
+async def get_training_state(session_id: str):
+    """Get current state of a training session."""
+    if session_id not in training_sessions:
+        raise HTTPException(status_code=404, detail="Training session not found")
+
+    session = training_sessions[session_id]
+    game = games.get(session_id)
+    opening = get_opening_by_id(session.opening_id)
+
+    if not game or not opening:
+        raise HTTPException(status_code=404, detail="Game or opening not found")
+
+    # Get current hint
+    current_hint = None
+    if session.current_move_index < len(opening.main_line):
+        move_info = opening.main_line[session.current_move_index]
+        current_hint = {
+            "move": move_info.move_san if session.hint_level == "full" else None,
+            "piece_hint": get_piece_hint(move_info.move_san) if session.hint_level == "partial" else None,
+            "explanation": move_info.explanation,
+            "level": session.hint_level,
+        }
+
+    return {
+        "session": session.to_dict(),
+        "state": game.state.to_dict(),
+        "current_hint": current_hint,
+        "is_complete": session.current_move_index >= len(opening.main_line),
+    }
+
+
+# ==================== REVIEW MODE ENDPOINTS ====================
+
+@app.get("/api/review/stats")
+async def get_review_stats():
+    """Get spaced repetition statistics."""
+    manager = get_review_manager()
+    return manager.get_stats()
+
+
+@app.get("/api/review/due")
+async def get_due_reviews(limit: int = 20, card_type: Optional[str] = None):
+    """Get cards due for review."""
+    manager = get_review_manager()
+    due_cards = manager.get_due_cards(limit, card_type)
+    return {
+        "due_count": len(due_cards),
+        "cards": [c.to_dict() for c in due_cards],
+    }
+
+
+@app.post("/api/review/start")
+async def start_review(request: StartReviewRequest):
+    """Start a review session."""
+    manager = get_review_manager()
+    due_cards = manager.get_due_cards(request.card_limit, request.card_type)
+
+    if not due_cards:
+        return {"session_id": None, "message": "No cards due for review", "total_cards": 0}
+
+    from datetime import datetime
+    session_id = f"review_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    session = ReviewSession(
+        session_id=session_id,
+        cards_to_review=[c.card_id for c in due_cards],
+    )
+    review_sessions[session_id] = session
+
+    first_card = due_cards[0]
+    logger.info(f"Review session started: {session_id} with {len(due_cards)} cards")
+    return {
+        "session_id": session_id,
+        "total_cards": len(due_cards),
+        "current_card": first_card.to_dict(),
+        "progress": session.progress,
+    }
+
+
+@app.get("/api/review/{session_id}/current")
+async def get_current_review_card(session_id: str):
+    """Get the current card in a review session."""
+    if session_id not in review_sessions:
+        raise HTTPException(status_code=404, detail="Review session not found")
+
+    session = review_sessions[session_id]
+    if session.is_complete:
+        return {
+            "is_complete": True,
+            "correct_count": session.correct_count,
+            "incorrect_count": session.incorrect_count,
+        }
+
+    manager = get_review_manager()
+    card_id = session.cards_to_review[session.current_index]
+    card = manager.get_card(card_id)
+
+    if not card:
+        # Skip missing cards
+        session.current_index += 1
+        if session.is_complete:
+            return {
+                "is_complete": True,
+                "correct_count": session.correct_count,
+                "incorrect_count": session.incorrect_count,
+            }
+        return await get_current_review_card(session_id)
+
+    return {
+        "is_complete": False,
+        "current_card": card.to_dict(),
+        "progress": session.progress,
+        "remaining": len(session.cards_to_review) - session.current_index,
+    }
+
+
+@app.post("/api/review/{session_id}/answer")
+async def submit_review_answer(session_id: str, request: ReviewAnswerRequest):
+    """Submit an answer for the current review card."""
+    if session_id not in review_sessions:
+        raise HTTPException(status_code=404, detail="Review session not found")
+
+    session = review_sessions[session_id]
+    if session.is_complete:
+        raise HTTPException(status_code=400, detail="Session already complete")
+
+    manager = get_review_manager()
+    card_id = session.cards_to_review[session.current_index]
+    card = manager.get_card(card_id)
+
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Check if answer is correct
+    user_move = request.move.strip()
+    is_correct = (user_move == card.expected_move or
+                  user_move in card.alternative_moves)
+
+    # Record result and update Leitner box
+    updated_card = manager.record_result(card_id, is_correct)
+
+    if is_correct:
+        session.correct_count += 1
+    else:
+        session.incorrect_count += 1
+
+    session.current_index += 1
+
+    # Get next card info
+    next_card = None
+    if not session.is_complete:
+        next_card_id = session.cards_to_review[session.current_index]
+        next_card = manager.get_card(next_card_id)
+
+    return {
+        "correct": is_correct,
+        "expected_move": card.expected_move,
+        "explanation": card.explanation,
+        "new_box": updated_card.box if updated_card else 1,
+        "is_session_complete": session.is_complete,
+        "next_card": next_card.to_dict() if next_card else None,
+        "progress": session.progress,
+        "session_stats": {
+            "correct": session.correct_count,
+            "incorrect": session.incorrect_count,
+        }
+    }
+
+
+@app.post("/api/review/{session_id}/skip")
+async def skip_review_card(session_id: str):
+    """Skip the current review card without recording a result."""
+    if session_id not in review_sessions:
+        raise HTTPException(status_code=404, detail="Review session not found")
+
+    session = review_sessions[session_id]
+    if session.is_complete:
+        raise HTTPException(status_code=400, detail="Session already complete")
+
+    session.current_index += 1
+
+    # Get next card
+    next_card = None
+    if not session.is_complete:
+        manager = get_review_manager()
+        next_card_id = session.cards_to_review[session.current_index]
+        next_card = manager.get_card(next_card_id)
+
+    return {
+        "skipped": True,
+        "is_session_complete": session.is_complete,
+        "next_card": next_card.to_dict() if next_card else None,
+        "progress": session.progress,
+    }
+
+
+@app.post("/api/review/{session_id}/complete")
+async def complete_review_session(session_id: str):
+    """Complete and cleanup a review session."""
+    if session_id not in review_sessions:
+        raise HTTPException(status_code=404, detail="Review session not found")
+
+    session = review_sessions[session_id]
+    total_reviewed = session.correct_count + session.incorrect_count
+
+    result = {
+        "correct_count": session.correct_count,
+        "incorrect_count": session.incorrect_count,
+        "total_reviewed": total_reviewed,
+        "accuracy": session.correct_count / max(1, total_reviewed),
+    }
+
+    del review_sessions[session_id]
+    logger.info(f"Review session completed: {session_id}, {result['correct_count']}/{total_reviewed} correct")
+    return result
+
+
+@app.post("/api/review/generate-opening-cards/{opening_id}")
+async def generate_opening_cards(opening_id: str):
+    """Generate review cards for an opening."""
+    opening = get_opening_by_id(opening_id)
+    if not opening:
+        raise HTTPException(status_code=404, detail="Opening not found")
+
+    card_ids = generate_opening_review_cards(opening_id)
+    return {
+        "opening_id": opening_id,
+        "cards_created": len(card_ids),
+        "card_ids": card_ids,
+    }
+
+
 # WebSocket for real-time communication
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str):
@@ -968,6 +1494,22 @@ async def analyze_player_move(board_before: chess.Board, move_san: str) -> Optio
             critical = [t for t in tactics if t.severity == 'critical']
             if critical:
                 feedback += f" Watch out: {critical[0].description}"
+
+            # Create a review card for this blunder (spaced repetition)
+            try:
+                manager = get_review_manager()
+                explanation = f"You played {move_san} but {best_move_san} was better. {feedback}"
+                move_num = len(board_before.move_stack) // 2 + 1
+                manager.create_blunder_card(
+                    fen=board_before.fen(),
+                    best_move=best_move_san,
+                    source_game="current_game.pgn",
+                    explanation=explanation,
+                    move_number=move_num
+                )
+                logger.info(f"[REVIEW] Created blunder review card for position")
+            except Exception as e:
+                logger.error(f"Failed to create blunder card: {e}")
 
             return feedback
 
