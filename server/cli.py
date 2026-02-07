@@ -6,7 +6,62 @@ Usage: chess [options]
 
 import argparse
 import os
+import subprocess
 import sys
+from pathlib import Path
+
+
+def build_frontend():
+    """Build the Svelte frontend if needed."""
+    project_root = Path(__file__).parent.parent
+    frontend_dir = project_root / "frontend"
+    dist_dir = project_root / "static" / "dist"
+
+    # Check if frontend exists
+    if not frontend_dir.exists():
+        return True  # No frontend to build, use legacy
+
+    # Check if node_modules exists
+    node_modules = frontend_dir / "node_modules"
+    if not node_modules.exists():
+        print("    Installing frontend dependencies...")
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=frontend_dir,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"    Warning: npm install failed: {result.stderr}")
+            return False
+
+    # Check if build is needed (dist doesn't exist or is older than src)
+    needs_build = not dist_dir.exists()
+
+    if not needs_build:
+        # Check if any source file is newer than dist
+        src_dir = frontend_dir / "src"
+        if src_dir.exists():
+            dist_mtime = dist_dir.stat().st_mtime
+            for src_file in src_dir.rglob("*"):
+                if src_file.is_file() and src_file.stat().st_mtime > dist_mtime:
+                    needs_build = True
+                    break
+
+    if needs_build:
+        print("    Building frontend...")
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=frontend_dir,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"    Warning: Build failed: {result.stderr}")
+            return False
+        print("    Frontend built successfully")
+
+    return True
 
 
 def main():
@@ -130,6 +185,9 @@ Requirements:
         print("      $ ollama pull llama3.2")
         print()
         sys.exit(1)
+
+    # Build frontend if needed
+    build_frontend()
 
     print()
     print("    Press Ctrl+C to stop")
