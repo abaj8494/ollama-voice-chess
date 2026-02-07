@@ -32,10 +32,17 @@
   let lastMove = null;
   let currentAudio = null;
 
-  $: fen = $trainingSession?.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  $: orientation = $currentOpening?.color || 'white';
-  $: isMyTurn = $trainingSession?.is_player_turn || false;
-  $: hint = $trainingSession?.hint || null;
+  // Extract state from training session - API returns state.fen, not fen directly
+  $: sessionState = $trainingSession?.state || {};
+  $: fen = sessionState?.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  $: orientation = $trainingSession?.player_color || $currentOpening?.color || 'white';
+
+  // Calculate whose turn based on FEN and player color
+  $: fenTurn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
+  $: isMyTurn = fenTurn === orientation;
+
+  // Hint from current_hint field
+  $: hint = $trainingSession?.current_hint || null;
   $: hintLevel = $trainingSession?.hint_level || 'full';
 
   $: {
@@ -88,10 +95,14 @@
 
       addTrainingMessage('info', `Starting ${opening.name} training...`);
 
-      if (result.hint) {
-        currentHint.set(result.hint);
+      // Set hint from current_hint field
+      if (result.current_hint) {
+        currentHint.set(result.current_hint);
+        // Speak the hint explanation
+        const hintText = result.current_hint.explanation ||
+          (result.current_hint.move ? `Play ${result.current_hint.move}` : 'Your move');
         if ($trainingVoiceEnabled) {
-          speak(result.hint);
+          speak(hintText);
         }
       }
     } catch (e) {
@@ -159,30 +170,47 @@
       const result = await submitTrainingMove($trainingSession.session_id, move.san);
 
       if (result.correct) {
-        addTrainingMessage('success', result.feedback || 'Correct!');
+        addTrainingMessage('success', result.message || 'Correct!');
+
+        // Update opponent's move in lastMove if they responded
+        if (result.opponent_move) {
+          addTrainingMessage('info', `Opponent plays: ${result.opponent_move}`);
+        }
       } else {
-        addTrainingMessage('error', result.feedback || 'Not quite...');
+        addTrainingMessage('error', result.message || 'Not quite...');
         if (result.expected_move) {
           addTrainingMessage('hint', `Expected: ${result.expected_move}`);
         }
+        // Undo the incorrect move locally
+        chess.undo();
       }
 
+      // Update session state with new position
       if (result.state) {
-        trainingSession.update(s => ({ ...s, ...result.state }));
+        trainingSession.update(s => ({
+          ...s,
+          state: result.state,
+          current_move_index: result.current_move_index,
+        }));
       }
 
-      if (result.hint) {
-        currentHint.set(result.hint);
-        if ($trainingVoiceEnabled) {
-          speak(result.hint);
+      // Set next hint
+      if (result.next_hint) {
+        currentHint.set(result.next_hint);
+        if ($trainingVoiceEnabled && result.next_hint.explanation) {
+          speak(result.next_hint.explanation);
         }
+      } else {
+        currentHint.set(null);
       }
 
-      if (result.completed) {
+      // Check if training is complete
+      if (result.is_complete) {
         await handleSessionComplete();
       }
     } catch (e) {
       addTrainingMessage('error', e.message);
+      chess.undo();
     }
   }
 
@@ -342,8 +370,15 @@
       <div class="hint-panel">
         <h4>Hint</h4>
         {#if hint}
-          <div class="hint-content hint-{hintLevel}">
-            {hint}
+          <div class="hint-content hint-{hint.level || hintLevel}">
+            {#if hint.move}
+              <div class="hint-move">Play: <strong>{hint.move}</strong></div>
+            {:else if hint.piece_hint}
+              <div class="hint-piece">Move your <strong>{hint.piece_hint}</strong></div>
+            {/if}
+            {#if hint.explanation}
+              <div class="hint-explanation">{hint.explanation}</div>
+            {/if}
           </div>
         {:else}
           <div class="hint-content hint-none">
@@ -628,6 +663,23 @@
   .hint-content.hint-none {
     border-left: 3px solid var(--text-muted);
     color: var(--text-muted);
+  }
+
+  .hint-move,
+  .hint-piece {
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+  }
+
+  .hint-move strong,
+  .hint-piece strong {
+    color: var(--accent-green);
+  }
+
+  .hint-explanation {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
   }
 
   .feedback-list {
