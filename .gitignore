@@ -41,3 +41,5 @@ Thumbs.db
 chess_games/*.pgn
 games/*.pgn
 data/player_stats.json
+data/review_cards.json
+data/training_stats.json
